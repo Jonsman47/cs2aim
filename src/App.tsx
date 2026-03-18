@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { HotkeyHint } from './components/HotkeyHint.tsx'
 import { ShotFeedbackToast } from './components/ShotFeedbackToast.tsx'
@@ -17,7 +18,16 @@ import {
 import { useReactionTrainer } from './game/useReactionTrainer.ts'
 import type { GameSettings, PeekSelection, PeekSpeedId, WeaponMode } from './game/types.ts'
 
+const isTypingTarget = (target: EventTarget | null) =>
+  target instanceof HTMLElement &&
+  (target.isContentEditable ||
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT')
+
 function App() {
+  const stageFrameRef = useRef<HTMLDivElement | null>(null)
+  const [fullscreenActive, setFullscreenActive] = useState(false)
   const {
     canvasRef,
     settings,
@@ -69,11 +79,57 @@ function App() {
         : 'Next Mixed Peek'
       : 'Repeat Same Peek'
 
+  const syncFullscreenState = () => {
+    setFullscreenActive(document.fullscreenElement === stageFrameRef.current)
+  }
+
+  useEffect(() => {
+    syncFullscreenState()
+
+    document.addEventListener('fullscreenchange', syncFullscreenState)
+    return () => {
+      document.removeEventListener('fullscreenchange', syncFullscreenState)
+    }
+  }, [])
+
+  const toggleFullscreen = async () => {
+    if (document.fullscreenElement === stageFrameRef.current) {
+      await document.exitFullscreen()
+      return
+    }
+
+    if (document.fullscreenElement) {
+      await document.exitFullscreen()
+    }
+
+    await stageFrameRef.current?.requestFullscreen()
+  }
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isTypingTarget(event.target)) {
+        return
+      }
+
+      if (event.code === UI_KEYBINDS.fullscreen.code) {
+        event.preventDefault()
+        void toggleFullscreen()
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
+
   return (
     <div
       className={`app-shell ${settings.darkTheme ? 'theme-dark' : 'theme-light'} ${
         settings.rawMode ? 'raw-mode' : ''
-      } ${snapshot.phase === 'menu' ? 'menu-open' : ''}`}
+      } ${snapshot.phase === 'menu' ? 'menu-open' : ''} ${
+        fullscreenActive ? 'fullscreen-active' : ''
+      }`}
     >
       {!settings.rawMode && snapshot.phase !== 'menu' && (
         <aside className="sidebar">
@@ -89,7 +145,7 @@ function App() {
       )}
 
       <main className="stage-shell">
-        <div className="stage-frame">
+        <div ref={stageFrameRef} className="stage-frame">
           <canvas
             ref={canvasRef}
             className="game-canvas"
@@ -110,13 +166,22 @@ function App() {
             </span>
           </div>
 
-          {snapshot.phase !== 'menu' && (
-            <div className="stage-actions">
+          <div className={`stage-actions ${snapshot.phase === 'menu' ? 'is-menu' : ''}`}>
+            <button
+              className="primary-button stage-fullscreen-button"
+              onClick={() => {
+                void toggleFullscreen()
+              }}
+            >
+              {fullscreenActive ? 'Exit Fullscreen' : 'Fullscreen'}{' '}
+              <HotkeyHint label={UI_KEYBINDS.fullscreen.label} />
+            </button>
+            {snapshot.phase !== 'menu' && (
               <button className="ghost-button" onClick={returnToMenu}>
                 Back To Menu <HotkeyHint label={UI_KEYBINDS.backToMenu.label} />
               </button>
-            </div>
-          )}
+            )}
+          </div>
 
           {snapshot.currentMessage && snapshot.phase !== 'result' && (
             <div className={`practice-overlay tone-${snapshot.currentMessage.tone}`}>

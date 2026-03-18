@@ -101,6 +101,7 @@ export const UI_KEYBINDS = {
   nextTry: { code: 'Space', label: 'Space' },
   restartSession: { code: 'KeyR', label: 'R' },
   backToMenu: { code: 'KeyL', label: 'L' },
+  fullscreen: { code: 'KeyF', label: 'F' },
 } as const
 
 export const WEAPON_PICKER_DETAILS: Record<

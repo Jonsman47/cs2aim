@@ -82,6 +82,31 @@
   top: 72px;
   right: 18px;
   z-index: 3;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.stage-actions.is-menu {
+  top: 18px;
+  z-index: 6;
+}
+
+.stage-fullscreen-button {
+  min-width: 188px;
+  justify-content: center;
+  background:
+    linear-gradient(180deg, rgba(117, 209, 255, 0.2), rgba(70, 143, 196, 0.14)),
+    rgba(9, 16, 21, 0.92);
+  border-color: rgba(121, 198, 255, 0.4);
+  box-shadow:
+    0 16px 36px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.stage-fullscreen-button:hover {
+  border-color: rgba(146, 215, 255, 0.58);
 }
 
 .shot-feedback-toast {
@@ -1236,6 +1261,35 @@ kbd {
     radial-gradient(circle at top, rgba(210, 170, 100, 0.2), transparent 48%),
     linear-gradient(180deg, rgba(235, 223, 204, 0.92), rgba(191, 162, 126, 0.92));
   border-color: rgba(98, 67, 28, 0.16);
+}
+
+.stage-frame:fullscreen {
+  min-height: 100vh;
+  width: 100vw;
+  height: 100vh;
+  border-radius: 0;
+  border: 0;
+  box-shadow: none;
+}
+
+.stage-frame:fullscreen .game-canvas {
+  height: 100vh;
+}
+
+.stage-frame:fullscreen .stage-actions {
+  top: 18px;
+  right: 18px;
+  z-index: 6;
+}
+
+.stage-frame:fullscreen .menu-overlay,
+.stage-frame:fullscreen .summary-overlay,
+.stage-frame:fullscreen .round-result-overlay {
+  padding: 18px;
+}
+
+.stage-frame:fullscreen .practice-overlay {
+  max-width: min(560px, calc(100% - 36px));
 }
 
 .theme-light .practice-overlay,
