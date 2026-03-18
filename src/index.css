@@ -1,0 +1,58 @@
+:root {
+  --bg: #071015;
+  --text: #e8eef0;
+  --muted: rgba(205, 219, 221, 0.72);
+  --accent: #72f0c4;
+  --font-body: 'Aptos', 'Segoe UI', sans-serif;
+  --font-display: 'Agency FB', 'Bahnschrift', 'Trebuchet MS', sans-serif;
+  --font-mono: 'Consolas', 'Courier New', monospace;
+  font-family: var(--font-body);
+  color: var(--text);
+  background: radial-gradient(circle at top, #12222c, #060a0d 58%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top, rgba(255, 198, 97, 0.08), transparent 22%),
+    linear-gradient(180deg, #0c171e, #04070a 60%);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+strong {
+  font-weight: 700;
+}
+
+kbd {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
