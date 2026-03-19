@@ -1,15 +1,15 @@
-import { getAdminRuntimeState } from './admin'
+import { getAdminRuntimeState } from './admin.js'
 import {
   getActiveAccount,
   getLeaderboardDisplayName,
   updateAccountSubmissionCooldown,
-} from './auth'
+} from './auth.js'
 import type {
   AuthState,
   FeedbackCategory,
   FeedbackPost,
   FeedbackState,
-} from './types'
+} from './types.js'
 
 const FEEDBACK_STORAGE_KEY = 'midlane-reaction-feedback'
 const MAX_FEEDBACK_POSTS = 36

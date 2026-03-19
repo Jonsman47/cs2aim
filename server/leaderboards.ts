@@ -1,6 +1,6 @@
-import { ADMIN_USERNAME, setAdminRuntimeState } from '../src/game/admin'
-import { LEADERBOARD_CATEGORIES } from '../src/game/auth'
-import { getXpProgress } from '../src/game/xp'
+import { ADMIN_USERNAME, setAdminRuntimeState } from '../src/game/admin.js'
+import { LEADERBOARD_CATEGORIES } from '../src/game/auth.js'
+import { getXpProgress } from '../src/game/xp.js'
 import type {
   AccountStats,
   AdminState,
@@ -10,7 +10,7 @@ import type {
   LeaderboardCategory,
   LeaderboardEntry,
   LeaderboardSnapshot,
-} from '../src/game/types'
+} from '../src/game/types.js'
 
 interface LeaderboardRowCandidate {
   name: string

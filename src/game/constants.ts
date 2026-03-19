@@ -12,7 +12,7 @@ import type {
   ScopeLevel,
   SessionType,
   WeaponMode,
-} from './types'
+} from './types.js'
 
 export const STORAGE_KEY = 'midlane-reaction-lab'
 export const AWP_COOLDOWN_MS = 560

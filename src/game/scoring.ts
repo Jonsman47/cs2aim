@@ -1,12 +1,12 @@
-import { getAdminRuntimeState } from './admin'
-import { BEHAVIOR_LABELS, PEEK_SPEED_LABELS, WEAPON_LABELS } from './constants'
-import { clamp } from './math'
+import { getAdminRuntimeState } from './admin.js'
+import { BEHAVIOR_LABELS, PEEK_SPEED_LABELS, WEAPON_LABELS } from './constants.js'
+import { clamp } from './math.js'
 import type {
   BehaviorId,
   PeekSpeedId,
   ScoreBreakdownItem,
   WeaponMode,
-} from './types'
+} from './types.js'
 
 interface ScoreInput {
   success: boolean

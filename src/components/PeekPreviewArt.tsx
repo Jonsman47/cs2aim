@@ -1,5 +1,5 @@
 import { useId } from 'react'
-import type { PeekSelection } from '../game/types'
+import type { PeekSelection } from '../game/types.js'
 
 interface PeekPreviewArtProps {
   peek: PeekSelection

@@ -1,4 +1,4 @@
-import type { WeaponMode } from '../game/types'
+import type { WeaponMode } from '../game/types.js'
 
 interface WeaponPreviewArtProps {
   weapon: WeaponMode

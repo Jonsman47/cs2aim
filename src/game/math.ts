@@ -1,4 +1,4 @@
-import type { Aabb, Vector3 } from './types'
+import type { Aabb, Vector3 } from './types.js'
 
 export interface Camera {
   position: Vector3

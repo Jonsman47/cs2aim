@@ -1,4 +1,4 @@
-import type { ShotFeedback } from '../game/types'
+import type { ShotFeedback } from '../game/types.js'
 
 interface ShotFeedbackToastProps {
   feedback: ShotFeedback

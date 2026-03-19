@@ -8,11 +8,11 @@ import {
   VIEW_YAW_LIMIT,
   WEAPON_PROPERTIES,
   withDerivedMode,
-} from './constants'
-import { buildEnemyHitboxes, evaluateVisibility, raycastEnemyHit } from './hitDetection'
-import { clamp, directionFromAngles, lerp } from './math'
-import { createRepPlan, getBehaviorDescription } from './patterns'
-import { evaluateAttemptScore } from './scoring'
+} from './constants.js'
+import { buildEnemyHitboxes, evaluateVisibility, raycastEnemyHit } from './hitDetection.js'
+import { clamp, directionFromAngles, lerp } from './math.js'
+import { createRepPlan, getBehaviorDescription } from './patterns.js'
+import { evaluateAttemptScore } from './scoring.js'
 import {
   buildSessionHistoryEntry,
   buildSessionSummary,
@@ -28,14 +28,14 @@ import {
   recordMiss,
   recordResolvedRep,
   recordSuccess,
-} from './stats'
-import { evaluateShotReward, getXpProgress } from './xp'
+} from './stats.js'
+import { evaluateShotReward, getXpProgress } from './xp.js'
 import type {
   EnemyHitboxes,
   EnemyPlan,
   EnemyStance,
   ScopeLevel,
-} from './types'
+} from './types.js'
 import type {
   GamePhase,
   GameSettings,
@@ -49,7 +49,7 @@ import type {
   ShotFeedback,
   Vector3,
   WeaponMode,
-} from './types'
+} from './types.js'
 
 export interface RuntimeEnemyState {
   id: string

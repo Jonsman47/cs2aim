@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react'
-import { drawCrosshairOverlay } from '../game/crosshair'
+import { drawCrosshairOverlay } from '../game/crosshair.js'
 import type {
   NormalCrosshairSettings,
   ScopedCrosshairSettings,
-} from '../game/types'
+} from '../game/types.js'
 
 interface CrosshairPreviewProps {
   variant: 'normal' | 'scoped'

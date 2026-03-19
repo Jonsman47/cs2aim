@@ -1,7 +1,7 @@
-import { DOOR_PANELS, LANE_FLOOR, REAR_WALL, SOLID_COVER } from './constants'
-import { drawCrosshairOverlay } from './crosshair'
-import { getCameraPose, type GameRuntime, type RuntimeEnemyState } from './engine'
-import { clamp, projectAabbBounds, projectPoint, smoothstep } from './math'
+import { DOOR_PANELS, LANE_FLOOR, REAR_WALL, SOLID_COVER } from './constants.js'
+import { drawCrosshairOverlay } from './crosshair.js'
+import { getCameraPose, type GameRuntime, type RuntimeEnemyState } from './engine.js'
+import { clamp, projectAabbBounds, projectPoint, smoothstep } from './math.js'
 
 interface CanvasMetrics {
   width: number

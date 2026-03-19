@@ -1,12 +1,12 @@
-import { getAdminRuntimeState } from './admin'
-import { clamp } from './math'
+import { getAdminRuntimeState } from './admin.js'
+import { clamp } from './math.js'
 import type {
   BehaviorId,
   MessageTone,
   PeekSpeedId,
   WeaponMode,
   XpProgress,
-} from './types'
+} from './types.js'
 
 const LEVEL_ONE_REQUIREMENT = 5000
 const LEVEL_REQUIREMENT_STEP = 1000

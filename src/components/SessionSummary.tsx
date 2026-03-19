@@ -1,12 +1,12 @@
-import { HotkeyHint } from './HotkeyHint'
+import { HotkeyHint } from './HotkeyHint.js'
 import {
   MODE_LABELS,
   SESSION_TYPE_LABELS,
   UI_KEYBINDS,
   WEAPON_LABELS,
   formatBehaviorLabel,
-} from '../game/constants'
-import type { SessionSummary } from '../game/types'
+} from '../game/constants.js'
+import type { SessionSummary } from '../game/types.js'
 
 interface SessionSummaryProps {
   summary: SessionSummary

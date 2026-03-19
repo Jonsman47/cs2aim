@@ -1,4 +1,4 @@
-import { HotkeyHint } from './HotkeyHint'
+import { HotkeyHint } from './HotkeyHint.js'
 import {
   MODE_LABELS,
   PEEK_SPEED_LABELS,
@@ -8,8 +8,8 @@ import {
   WEAPON_LABELS,
   formatBehaviorLabel,
   formatPeekSelectionLabel,
-} from '../game/constants'
-import type { GameSettings, GameSnapshot } from '../game/types'
+} from '../game/constants.js'
+import type { GameSettings, GameSnapshot } from '../game/types.js'
 
 interface HudProps {
   settings: GameSettings

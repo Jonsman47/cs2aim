@@ -1,3 +1,3 @@
-import { handleVercelRequest } from '../server/vercel-handler'
+import { handleVercelRequest } from '../server/vercel-handler.js'
 
 export default handleVercelRequest

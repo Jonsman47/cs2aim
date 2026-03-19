@@ -1,6 +1,6 @@
-import { HotkeyHint } from './HotkeyHint'
-import { UI_KEYBINDS, WEAPON_LABELS, formatBehaviorLabel } from '../game/constants'
-import type { RoundResult as RoundResultModel } from '../game/types'
+import { HotkeyHint } from './HotkeyHint.js'
+import { UI_KEYBINDS, WEAPON_LABELS, formatBehaviorLabel } from '../game/constants.js'
+import type { RoundResult as RoundResultModel } from '../game/types.js'
 
 interface RoundResultProps {
   result: RoundResultModel

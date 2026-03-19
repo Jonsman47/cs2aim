@@ -1,4 +1,4 @@
-import { app, initializeServer } from './index'
+import { app, initializeServer } from './index.js'
 
 let initialized: Promise<void> | null = null
 

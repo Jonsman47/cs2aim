@@ -6,20 +6,20 @@ import {
   timingSafeEqual,
 } from 'node:crypto'
 import type { PoolClient } from 'pg'
-import { pool } from './db'
-import { buildLeaderboardSnapshots } from './leaderboards'
+import { pool } from './db.js'
+import { buildLeaderboardSnapshots } from './leaderboards.js'
 import {
   ADMIN_USERNAME,
   createDefaultAdminState,
   normalizeAdminState,
   setAdminRuntimeState,
-} from '../src/game/admin'
+} from '../src/game/admin.js'
 import {
   createEmptyAccountStats,
   createEmptyAccountSubmissionCooldowns,
   createEmptyAnonymousProfile,
   hasMeaningfulProgress,
-} from '../src/game/auth'
+} from '../src/game/auth.js'
 import type {
   AccountStats,
   AdminState,
@@ -29,7 +29,7 @@ import type {
   FeedbackCategory,
   FeedbackPost,
   FeedbackState,
-} from '../src/game/types'
+} from '../src/game/types.js'
 
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30
 const FEEDBACK_COOLDOWN_MS = 60 * 60 * 1000

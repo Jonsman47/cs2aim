@@ -1,10 +1,10 @@
 import { useLayoutEffect, useState, type CSSProperties, type FormEvent } from 'react'
-import { AdminPanel, type AdminPanelModel } from './AdminPanel'
-import { FeedbackHub } from './FeedbackHub'
-import { HotkeyHint } from './HotkeyHint'
-import { PeekPreviewArt } from './PeekPreviewArt'
-import { SettingsPanel } from './SettingsPanel'
-import { WeaponPreviewArt } from './WeaponPreviewArt'
+import { AdminPanel, type AdminPanelModel } from './AdminPanel.js'
+import { FeedbackHub } from './FeedbackHub.js'
+import { HotkeyHint } from './HotkeyHint.js'
+import { PeekPreviewArt } from './PeekPreviewArt.js'
+import { SettingsPanel } from './SettingsPanel.js'
+import { WeaponPreviewArt } from './WeaponPreviewArt.js'
 import {
   MODE_LABELS,
   PEEK_SELECTION_LABELS,
@@ -15,7 +15,7 @@ import {
   WEAPON_LABELS,
   WEAPON_PICKER_DETAILS,
   formatPeekSelectionLabel,
-} from '../game/constants'
+} from '../game/constants.js'
 import type {
   AdminAnnouncement,
   FeedbackPost,
@@ -28,7 +28,7 @@ import type {
   PeekSpeedId,
   WeaponMode,
   XpProgress,
-} from '../game/types'
+} from '../game/types.js'
 
 type MenuTab = 'play' | 'settings' | 'leaderboards' | 'admin'
 

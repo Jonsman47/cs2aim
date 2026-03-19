@@ -3,9 +3,9 @@ import {
   STORAGE_KEY,
   normalizeWeaponMode,
   withDerivedMode,
-} from './constants'
-import { createEmptyLifetimeStats, createEmptyWeaponUsage } from './stats'
-import type { PersistentState } from './types'
+} from './constants.js'
+import { createEmptyLifetimeStats, createEmptyWeaponUsage } from './stats.js'
+import type { PersistentState } from './types.js'
 
 const clampHistory = (history: PersistentState['history']) =>
   history
