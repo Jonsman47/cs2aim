@@ -9,8 +9,6 @@ import type {
   ProgressionBatchSyncRequest,
   ProgressionBatchSyncResponse,
   LeaderboardSnapshot,
-  ProgressionSyncRequest,
-  ProgressionSyncResponse,
   SessionBootstrapRequest,
   SessionBootstrapResponse,
 } from './types.ts'
@@ -100,12 +98,6 @@ export const logoutOnServer = () =>
   }>('/api/auth/logout', {
     method: 'POST',
     body: JSON.stringify({}),
-  })
-
-export const syncProgressionToServer = (payload: ProgressionSyncRequest) =>
-  apiRequest<ProgressionSyncResponse>('/api/progression/sync', {
-    method: 'POST',
-    body: JSON.stringify(payload),
   })
 
 export const syncProgressionBatchToServer = (

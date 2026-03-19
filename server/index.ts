@@ -14,7 +14,6 @@ import {
   syncAdminAuthStateToServer,
   syncAdminFeedbackStateToServer,
   syncAdminStateToServer,
-  syncProgressionEvent,
   syncProgressionEvents,
 } from './store.ts'
 
@@ -119,17 +118,6 @@ app.post(
   '/api/auth/logout',
   route(async (req, res) => {
     const payload = await logoutFromServer(getSessionToken(req.headers.cookie))
-    respondWithSession(res, payload)
-  }),
-)
-
-app.post(
-  '/api/progression/sync',
-  route(async (req, res) => {
-    const payload = await syncProgressionEvent(
-      getSessionToken(req.headers.cookie),
-      req.body,
-    )
     respondWithSession(res, payload)
   }),
 )
