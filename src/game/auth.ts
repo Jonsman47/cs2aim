@@ -14,8 +14,11 @@ import type {
 const AUTH_STORAGE_KEY = 'midlane-reaction-auth'
 export const ANONYMOUS_LEADERBOARD_NAME = 'Anonymous'
 const ANONYMOUS_ID_LENGTH = 3
+const OPAQUE_ID_LENGTH = 10
 
 const sanitizeName = (value: string) => value.trim()
+const createOpaqueId = (prefix: string) =>
+  `${prefix}-${Math.random().toString(36).slice(2, 2 + OPAQUE_ID_LENGTH)}`
 const createAnonymousId = () =>
   Math.floor(Math.random() * 10 ** ANONYMOUS_ID_LENGTH)
     .toString()
@@ -52,6 +55,7 @@ export const createEmptyAccountSubmissionCooldowns = (): AccountSubmissionCooldo
 })
 
 export const createEmptyAnonymousProfile = (): AnonymousProfile => ({
+  profileId: createOpaqueId('anon'),
   id: createAnonymousId(),
   xp: 0,
   stats: createEmptyAccountStats(),
@@ -90,6 +94,10 @@ const normalizeCooldowns = (
 const normalizeAnonymousProfile = (
   profile: Partial<AnonymousProfile> | undefined,
 ): AnonymousProfile => ({
+  profileId:
+    typeof profile?.profileId === 'string' && profile.profileId.trim()
+      ? profile.profileId
+      : createOpaqueId('anon'),
   id: normalizeAnonymousId(profile?.id),
   xp: Number(profile?.xp) || 0,
   stats: normalizeStats(profile?.stats),
@@ -103,7 +111,7 @@ const normalizeAnonymousProfile = (
     : [],
 })
 
-const hasMeaningfulProgress = ({
+export const hasMeaningfulProgress = ({
   xp,
   stats,
 }: {
@@ -164,6 +172,10 @@ export const loadAuthState = (): AuthState => {
     const parsed = JSON.parse(raw) as Partial<AuthState>
     const accounts = Array.isArray(parsed.accounts)
       ? parsed.accounts.map((account) => ({
+          id:
+            typeof account.id === 'string' && account.id.trim()
+              ? account.id
+              : createOpaqueId('acct'),
           name: typeof account.name === 'string' ? account.name : '',
           password: typeof account.password === 'string' ? account.password : '',
           xp: Number(account.xp) || 0,
@@ -270,6 +282,7 @@ export const registerAccount = (
     accounts: [
       ...state.accounts,
       {
+        id: createOpaqueId('acct'),
         name: normalizedName,
         password: normalizedPassword,
         xp: transferringAnonymousProgress ? state.anonymousProfile.xp : 0,

@@ -25,16 +25,25 @@ import {
   ADMIN_USERNAME,
 } from './admin.ts'
 import {
+  bootstrapSessionFromServer,
+  fetchCommunityFromServer,
+  fetchLeaderboardsFromServer,
+  loginOnServer,
+  logoutOnServer,
+  registerOnServer,
+  submitFeedbackToServer,
+  syncAdminAuthStateToServer,
+  syncAdminFeedbackStateToServer,
+  syncAdminStateToServer,
+  syncProgressionToServer,
+} from './api.ts'
+import {
   LEADERBOARD_CATEGORIES,
   createEmptyAnonymousProfile,
   createEmptyAccountStats,
   getActiveAccount,
-  getLeaderboardEntries,
   getProgressionProfile,
   loadAuthState,
-  loginAccount,
-  logoutAccount,
-  registerAccount,
   saveAuthState,
   updateAccountProgress,
 } from './auth.ts'
@@ -48,7 +57,6 @@ import {
 import {
   loadFeedbackState,
   saveFeedbackState,
-  submitFeedbackPost,
 } from './feedback.ts'
 import {
   applySettings,
@@ -78,15 +86,17 @@ import type {
   FeedbackState,
   GameSettings,
   HomepageNotice,
+  LeaderboardSnapshot,
   LeaderboardBot,
   PeekSelection,
   WeaponMode,
 } from './types.ts'
 
 const loadedState = loadPersistentState()
-const loadedAuthState = loadAuthState()
-const loadedFeedbackState = loadFeedbackState()
-const loadedAdminState = loadAdminState()
+const loadedLegacyAuthState = loadAuthState()
+const loadedCachedFeedbackState = loadFeedbackState()
+const loadedCachedAdminState = loadAdminState()
+const LEGACY_ANONYMOUS_MIGRATED_KEY = 'midlane-reaction-legacy-anonymous-migrated'
 
 const normalizeLookupName = (value: string | null | undefined) =>
   value?.trim().toLowerCase() ?? ''
@@ -158,7 +168,7 @@ const createInitialRuntime = () => {
     loadedState.history,
     loadedState.lifetime,
   )
-  const initialProfile = getProgressionProfile(loadedAuthState)
+  const initialProfile = getProgressionProfile(loadedLegacyAuthState)
   setAccountSession(
     runtime,
     initialProfile.displayName,
@@ -166,6 +176,12 @@ const createInitialRuntime = () => {
   )
   return runtime
 }
+
+const createEmptyLeaderboards = (): LeaderboardSnapshot[] =>
+  LEADERBOARD_CATEGORIES.map((category) => ({
+    ...category,
+    entries: [],
+  }))
 
 const getAudioVolume = (settings: GameSettings) =>
   settings.soundEnabled ? Math.max(0, Math.min(settings.masterVolume, 1)) : 0
@@ -181,18 +197,23 @@ export const useReactionTrainer = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const audioRef = useRef<ReturnType<typeof createAudioBus> | null>(null)
   const runtimeRef = useRef<ReturnType<typeof createGameRuntime>>(null as never)
-  const authStorageSnapshotRef = useRef(JSON.stringify(loadedAuthState))
-  const feedbackStorageSnapshotRef = useRef(JSON.stringify(loadedFeedbackState))
-  const adminStorageSnapshotRef = useRef(JSON.stringify(loadedAdminState))
+  const initialServerSyncDoneRef = useRef(false)
+  const legacyAnonymousMigrationPendingRef = useRef(
+    typeof window !== 'undefined' &&
+      window.localStorage.getItem(LEGACY_ANONYMOUS_MIGRATED_KEY) !== '1',
+  )
   if (!runtimeRef.current) {
     runtimeRef.current = createInitialRuntime()
   }
   const [settings, setSettings] = useState<GameSettings>(
     withDerivedMode(loadedState.settings),
   )
-  const [authState, setAuthState] = useState<AuthState>(loadedAuthState)
-  const [feedbackState, setFeedbackState] = useState<FeedbackState>(loadedFeedbackState)
-  const [adminState, setAdminState] = useState<AdminState>(loadedAdminState)
+  const [authState, setAuthState] = useState<AuthState>(loadedLegacyAuthState)
+  const [feedbackState, setFeedbackState] = useState<FeedbackState>(loadedCachedFeedbackState)
+  const [adminState, setAdminState] = useState<AdminState>(loadedCachedAdminState)
+  const [leaderboards, setLeaderboards] = useState<LeaderboardSnapshot[]>(
+    createEmptyLeaderboards(),
+  )
   const [authMessage, setAuthMessage] = useState<string | null>(null)
   const [adminStatus, setAdminStatus] = useState<{
     tone: 'good' | 'warn'
@@ -213,15 +234,61 @@ export const useReactionTrainer = () => {
   const progressionProfile = getProgressionProfile(authState)
   const isAdmin = isAdminAccountName(activeAccount?.name ?? null)
 
-  const leaderboards = LEADERBOARD_CATEGORIES.map((category) => ({
-    ...category,
-    entries: getLeaderboardEntries(authState, category.id),
-  }))
-
   const syncSnapshot = () => {
     startTransition(() => {
       setSnapshot(getSnapshot(runtimeRef.current))
     })
+  }
+
+  const refreshSharedState = async ({
+    migrateLegacyAnonymous = false,
+    preserveAuthMessage = false,
+  }: {
+    migrateLegacyAnonymous?: boolean
+    preserveAuthMessage?: boolean
+  } = {}) => {
+    try {
+      const shouldMigrateLegacyAnonymous =
+        migrateLegacyAnonymous && legacyAnonymousMigrationPendingRef.current
+      const session = await bootstrapSessionFromServer(
+        shouldMigrateLegacyAnonymous
+          ? { legacyAnonymousProfile: loadedLegacyAuthState.anonymousProfile }
+          : undefined,
+      )
+      const [community, nextLeaderboards] = await Promise.all([
+        fetchCommunityFromServer(),
+        fetchLeaderboardsFromServer(),
+      ])
+
+      if (shouldMigrateLegacyAnonymous && typeof window !== 'undefined') {
+        window.localStorage.setItem(LEGACY_ANONYMOUS_MIGRATED_KEY, '1')
+        legacyAnonymousMigrationPendingRef.current = false
+      }
+
+      setAdminRuntimeState(community.adminState)
+      startTransition(() => {
+        setAuthState(session.authState)
+        setFeedbackState(community.feedbackState)
+        setAdminState(community.adminState)
+        setLeaderboards(nextLeaderboards)
+        setAuthMessage((current) =>
+          session.authMessage !== null
+            ? session.authMessage
+            : preserveAuthMessage
+              ? current
+              : null,
+        )
+      })
+      initialServerSyncDoneRef.current = true
+    } catch (error) {
+      if (!initialServerSyncDoneRef.current) {
+        setAuthMessage(
+          error instanceof Error
+            ? `Server sync failed: ${error.message}`
+            : 'Server sync failed.',
+        )
+      }
+    }
   }
 
   useEffect(() => {
@@ -237,62 +304,32 @@ export const useReactionTrainer = () => {
   }, [settings, snapshot.persistenceVersion])
 
   useEffect(() => {
-    authStorageSnapshotRef.current = JSON.stringify(authState)
     saveAuthState(authState)
   }, [authState])
 
   useEffect(() => {
-    feedbackStorageSnapshotRef.current = JSON.stringify(feedbackState)
     saveFeedbackState(feedbackState)
   }, [feedbackState])
 
   useEffect(() => {
-    adminStorageSnapshotRef.current = JSON.stringify(adminState)
     saveAdminState(adminState)
   }, [adminState])
 
   useEffect(() => {
-    const syncCommunityState = () => {
-      const latestAuthState = loadAuthState()
-      const latestAuthSerialized = JSON.stringify(latestAuthState)
-      if (latestAuthSerialized !== authStorageSnapshotRef.current) {
-        authStorageSnapshotRef.current = latestAuthSerialized
-        startTransition(() => {
-          setAuthState(latestAuthState)
-        })
-      }
-
-      const latestFeedbackState = loadFeedbackState()
-      const latestFeedbackSerialized = JSON.stringify(latestFeedbackState)
-      if (latestFeedbackSerialized !== feedbackStorageSnapshotRef.current) {
-        feedbackStorageSnapshotRef.current = latestFeedbackSerialized
-        startTransition(() => {
-          setFeedbackState(latestFeedbackState)
-        })
-      }
-
-      const latestAdminState = loadAdminState()
-      const latestAdminSerialized = JSON.stringify(latestAdminState)
-      if (latestAdminSerialized !== adminStorageSnapshotRef.current) {
-        adminStorageSnapshotRef.current = latestAdminSerialized
-        startTransition(() => {
-          setAdminState(latestAdminState)
-        })
-      }
-    }
-
+    void refreshSharedState({
+      migrateLegacyAnonymous: true,
+      preserveAuthMessage: true,
+    })
     const interval = window.setInterval(
-      syncCommunityState,
+      () => {
+        void refreshSharedState({
+          preserveAuthMessage: true,
+        })
+      },
       adminState.leaderboardAutoRefreshSeconds * 1000,
     )
-    const onStorage = () => {
-      syncCommunityState()
-    }
-
-    window.addEventListener('storage', onStorage)
     return () => {
       window.clearInterval(interval)
-      window.removeEventListener('storage', onStorage)
     }
   }, [adminState.leaderboardAutoRefreshSeconds])
 
@@ -351,6 +388,19 @@ export const useReactionTrainer = () => {
     const reactionTime =
       reactionTimes.length > 0 ? reactionTimes[reactionTimes.length - 1] : null
     const score = killsDelta > 0 ? currentSnapshot.lastResult?.score ?? null : null
+    const xpDelta = Math.max(runtime.accountXp - progressionProfile.xp, 0)
+    const hasMeaningfulProgressChange =
+      xpDelta > 0 ||
+      shotsDelta > 0 ||
+      killsDelta > 0 ||
+      headshotsDelta > 0 ||
+      wallbangsDelta > 0 ||
+      reactionTimes.length > 0 ||
+      score !== null
+
+    if (!hasMeaningfulProgressChange) {
+      return
+    }
 
     setAuthState((current) =>
       updateAccountProgress(current, getActiveAccount(current)?.name ?? null, {
@@ -364,7 +414,34 @@ export const useReactionTrainer = () => {
         score,
       }),
     )
-  }, [snapshot.persistenceVersion])
+
+    void syncProgressionToServer({
+      eventId: `progress-${currentSnapshot.persistenceVersion}-${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2, 8)}`,
+      xpDelta,
+      shotsDelta,
+      killsDelta,
+      headshotsDelta,
+      wallbangsDelta,
+      reactionTimes,
+      score,
+    })
+      .then(({ authState: nextAuthState }) => {
+        startTransition(() => {
+          setAuthState(nextAuthState)
+        })
+        return fetchLeaderboardsFromServer()
+      })
+      .then((nextLeaderboards) => {
+        startTransition(() => {
+          setLeaderboards(nextLeaderboards)
+        })
+      })
+      .catch(() => {
+        // Keep local play responsive if the network misses a sync.
+      })
+  }, [progressionProfile.xp, snapshot.persistenceVersion])
 
   useEffect(() => {
     if (
@@ -489,6 +566,13 @@ export const useReactionTrainer = () => {
     beginSession()
   }
 
+  const findLegacyAccount = (name: string, password: string) =>
+    loadedLegacyAuthState.accounts.find(
+      (account) =>
+        normalizeLookupName(account.name) === normalizeLookupName(name) &&
+        account.password === password.trim(),
+    ) ?? null
+
   const applyAuthUpdate = (nextState: AuthState, message: string | null) => {
     const nextProfile = getProgressionProfile(nextState)
     setAuthState(nextState)
@@ -502,20 +586,44 @@ export const useReactionTrainer = () => {
   }
 
   const login = (name: string, password: string) => {
-    const result = loginAccount(authState, name, password)
-    applyAuthUpdate(result.state, result.message)
+    void loginOnServer({
+      name,
+      password,
+      legacyAccount: findLegacyAccount(name, password),
+    })
+      .then((result) => {
+        applyAuthUpdate(result.authState, result.message)
+        return refreshSharedState({ preserveAuthMessage: true })
+      })
+      .catch((error) => {
+        setAuthMessage(error instanceof Error ? error.message : 'Login failed.')
+      })
   }
 
   const register = (name: string, password: string) => {
-    const result = registerAccount(authState, name, password)
-    applyAuthUpdate(result.state, result.message)
+    void registerOnServer({
+      name,
+      password,
+      legacyAccount: findLegacyAccount(name, password),
+    })
+      .then((result) => {
+        applyAuthUpdate(result.authState, result.message)
+        return refreshSharedState({ preserveAuthMessage: true })
+      })
+      .catch((error) => {
+        setAuthMessage(error instanceof Error ? error.message : 'Register failed.')
+      })
   }
 
   const logout = () => {
-    applyAuthUpdate(
-      logoutAccount(authState),
-      'Logged out. Local anonymous progression is active on this device.',
-    )
+    void logoutOnServer()
+      .then((result) => {
+        applyAuthUpdate(result.authState, result.message)
+        return refreshSharedState({ preserveAuthMessage: true })
+      })
+      .catch((error) => {
+        setAuthMessage(error instanceof Error ? error.message : 'Logout failed.')
+      })
   }
 
   interface AdminMutation {
@@ -574,15 +682,17 @@ export const useReactionTrainer = () => {
       mutation.auditAction,
       mutation.auditDetail ?? mutation.message,
     )
+    const nextAuthState = mutation.authState ?? authState
+    const nextFeedbackState = mutation.feedbackState ?? feedbackState
     setAdminRuntimeState(nextAdminState)
     setAdminState(nextAdminState)
 
     if (mutation.authState) {
-      setAuthState(mutation.authState)
+      setAuthState(nextAuthState)
     }
 
     if (mutation.feedbackState) {
-      setFeedbackState(mutation.feedbackState)
+      setFeedbackState(nextFeedbackState)
     }
 
     if (mutation.history) {
@@ -617,6 +727,41 @@ export const useReactionTrainer = () => {
       message: mutation.message,
     })
     syncSnapshot()
+
+    void Promise.all([
+      syncAdminStateToServer(nextAdminState),
+      mutation.authState ? syncAdminAuthStateToServer(nextAuthState) : Promise.resolve(null),
+      mutation.feedbackState
+        ? syncAdminFeedbackStateToServer(nextFeedbackState)
+        : Promise.resolve(null),
+    ])
+      .then(([, syncedAuth, syncedFeedback]) => {
+        if (syncedAuth) {
+          startTransition(() => {
+            setAuthState(syncedAuth.authState)
+          })
+        }
+
+        if (syncedFeedback) {
+          startTransition(() => {
+            setFeedbackState(syncedFeedback.feedbackState)
+          })
+        }
+
+        return fetchLeaderboardsFromServer()
+      })
+      .then((nextLeaderboards) => {
+        startTransition(() => {
+          setLeaderboards(nextLeaderboards)
+        })
+      })
+      .catch((error) => {
+        setAdminStatus({
+          tone: 'warn',
+          message:
+            error instanceof Error ? error.message : 'Admin server sync failed.',
+        })
+      })
     return true
   }
 
@@ -2264,60 +2409,93 @@ export const useReactionTrainer = () => {
     }
   }
 
-  const submitBugReport = (body: string) => {
-    const result = submitFeedbackPost({
-      feedbackState,
-      authState,
-      category: 'bug-report',
-      body,
-    })
-    setFeedbackState(result.feedbackState)
-    setAuthState(result.authState)
-    setFeedbackStatus((current) => ({
-      ...current,
-      bugReport: {
-        tone: result.ok ? 'good' : 'warn',
-        message: result.message,
-      },
-    }))
-    return result.ok
+  const submitBugReport = async (body: string) => {
+    try {
+      const result = await submitFeedbackToServer({
+        category: 'bug-report',
+        body,
+      })
+      setFeedbackState(result.feedbackState)
+      setAuthState(result.authState)
+      setFeedbackStatus((current) => ({
+        ...current,
+        bugReport: {
+          tone: result.ok ? 'good' : 'warn',
+          message: result.message,
+        },
+      }))
+      return result.ok
+    } catch (error) {
+      setFeedbackStatus((current) => ({
+        ...current,
+        bugReport: {
+          tone: 'warn',
+          message:
+            error instanceof Error ? error.message : 'Bug report submission failed.',
+        },
+      }))
+      return false
+    }
   }
 
-  const submitFeatureRequest = (body: string) => {
-    const result = submitFeedbackPost({
-      feedbackState,
-      authState,
-      category: 'feature-request',
-      body,
-    })
-    setFeedbackState(result.feedbackState)
-    setAuthState(result.authState)
-    setFeedbackStatus((current) => ({
-      ...current,
-      featureRequest: {
-        tone: result.ok ? 'good' : 'warn',
-        message: result.message,
-      },
-    }))
-    return result.ok
+  const submitFeatureRequest = async (body: string) => {
+    try {
+      const result = await submitFeedbackToServer({
+        category: 'feature-request',
+        body,
+      })
+      setFeedbackState(result.feedbackState)
+      setAuthState(result.authState)
+      setFeedbackStatus((current) => ({
+        ...current,
+        featureRequest: {
+          tone: result.ok ? 'good' : 'warn',
+          message: result.message,
+        },
+      }))
+      return result.ok
+    } catch (error) {
+      setFeedbackStatus((current) => ({
+        ...current,
+        featureRequest: {
+          tone: 'warn',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Feature request submission failed.',
+        },
+      }))
+      return false
+    }
   }
 
-  const submitReview = (body: string) => {
-    const result = submitFeedbackPost({
-      feedbackState,
-      authState,
-      category: 'review',
-      body,
-    })
-    setFeedbackState(result.feedbackState)
-    setFeedbackStatus((current) => ({
-      ...current,
-      review: {
-        tone: result.ok ? 'good' : 'warn',
-        message: result.message,
-      },
-    }))
-    return result.ok
+  const submitReview = async (body: string) => {
+    try {
+      const result = await submitFeedbackToServer({
+        category: 'review',
+        body,
+      })
+      setFeedbackState(result.feedbackState)
+      setAuthState(result.authState)
+      setFeedbackStatus((current) => ({
+        ...current,
+        review: {
+          tone: result.ok ? 'good' : 'warn',
+          message: result.message,
+        },
+      }))
+      return result.ok
+    } catch (error) {
+      setFeedbackStatus((current) => ({
+        ...current,
+        review: {
+          tone: 'warn',
+          message:
+            error instanceof Error ? error.message : 'Feedback submission failed.',
+        },
+      }))
+      return false
+    }
   }
 
   const onStageMouseMove = (event: ReactMouseEvent<HTMLCanvasElement>) => {

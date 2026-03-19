@@ -15,9 +15,9 @@ interface FeedbackHubProps {
     bugReportLastSubmittedAt: number | null
     featureRequestLastSubmittedAt: number | null
   }
-  onSubmitBugReport: (body: string) => boolean
-  onSubmitFeatureRequest: (body: string) => boolean
-  onSubmitReview: (body: string) => boolean
+  onSubmitBugReport: (body: string) => boolean | Promise<boolean>
+  onSubmitFeatureRequest: (body: string) => boolean | Promise<boolean>
+  onSubmitReview: (body: string) => boolean | Promise<boolean>
 }
 
 const formatRemaining = (remainingMs: number) => {
@@ -68,7 +68,7 @@ interface FeedbackColumnProps {
   helper: string
   posts: FeedbackPost[]
   status: { tone: 'good' | 'warn'; message: string } | null
-  onSubmit: (body: string) => boolean
+  onSubmit: (body: string) => boolean | Promise<boolean>
 }
 
 const orderPosts = (posts: FeedbackPost[]) =>
@@ -92,9 +92,9 @@ function FeedbackColumn({
 }: FeedbackColumnProps) {
   const [value, setValue] = useState('')
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (onSubmit(value)) {
+    if (await onSubmit(value)) {
       setValue('')
     }
   }

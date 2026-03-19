@@ -342,6 +342,7 @@ export interface PersistentState {
 }
 
 export interface AuthAccount {
+  id: string
   name: string
   password: string
   xp: number
@@ -358,6 +359,7 @@ export interface AuthAccount {
 }
 
 export interface AnonymousProfile {
+  profileId: string | null
   id: string
   xp: number
   stats: AccountStats
@@ -433,6 +435,12 @@ export interface LeaderboardEntry {
   pinned?: boolean
   admin?: boolean
   bot?: boolean
+}
+
+export interface LeaderboardSnapshot {
+  id: LeaderboardCategory
+  label: string
+  entries: LeaderboardEntry[]
 }
 
 export interface LeaderboardBadge {
@@ -595,4 +603,70 @@ export interface GameSnapshot {
   favoriteWeapon: WeaponMode
   averageShotTimeMs: number | null
   persistenceVersion: number
+}
+
+export interface SessionBootstrapRequest {
+  legacyAnonymousProfile?: AnonymousProfile | null
+}
+
+export interface SessionBootstrapResponse {
+  authState: AuthState
+  authMessage: string | null
+}
+
+export interface AuthMutationRequest {
+  name: string
+  password: string
+  legacyAccount?: AuthAccount | null
+}
+
+export interface AuthMutationResponse {
+  ok: boolean
+  message: string
+  authState: AuthState
+}
+
+export interface ProgressionSyncRequest {
+  eventId: string
+  xpDelta: number
+  shotsDelta: number
+  killsDelta: number
+  headshotsDelta: number
+  wallbangsDelta: number
+  reactionTimes: number[]
+  score: number | null
+}
+
+export interface ProgressionSyncResponse {
+  authState: AuthState
+}
+
+export interface CommunitySnapshotResponse {
+  adminState: AdminState
+  feedbackState: FeedbackState
+}
+
+export interface FeedbackMutationRequest {
+  category: FeedbackCategory
+  body: string
+}
+
+export interface FeedbackMutationResponse {
+  ok: boolean
+  message: string
+  feedbackState: FeedbackState
+  authState: AuthState
+  remainingMs: number
+}
+
+export interface AdminAuthSyncRequest {
+  authState: AuthState
+}
+
+export interface AdminFeedbackSyncRequest {
+  feedbackState: FeedbackState
+}
+
+export interface AdminStateSyncRequest {
+  adminState: AdminState
 }

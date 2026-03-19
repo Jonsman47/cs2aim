@@ -99,9 +99,9 @@ interface MainMenuProps {
   onLogin: (name: string, password: string) => void
   onRegister: (name: string, password: string) => void
   onLogout: () => void
-  onSubmitBugReport: (body: string) => boolean
-  onSubmitFeatureRequest: (body: string) => boolean
-  onSubmitReview: (body: string) => boolean
+  onSubmitBugReport: (body: string) => boolean | Promise<boolean>
+  onSubmitFeatureRequest: (body: string) => boolean | Promise<boolean>
+  onSubmitReview: (body: string) => boolean | Promise<boolean>
 }
 
 const formatReaction = (value: number | null) =>
