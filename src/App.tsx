@@ -39,14 +39,12 @@ function App() {
     adminPanel,
     modeOptions,
     weaponOptions,
-    leaderboardRefreshSeconds,
     announcements,
     bannerText,
     featuredMessage,
     homepageNotices,
     lobbyMessage,
     specialTheme,
-    leaderboards,
     feedbackPosts,
     feedbackStatus,
     feedbackAccess,
@@ -237,14 +235,12 @@ function App() {
               adminPanel={adminPanel}
               modeOptions={modeOptions}
               weaponOptions={weaponOptions}
-              leaderboardRefreshSeconds={leaderboardRefreshSeconds}
               announcements={announcements}
               bannerText={bannerText}
               featuredMessage={featuredMessage}
               homepageNotices={homepageNotices}
               lobbyMessage={lobbyMessage}
               specialTheme={specialTheme}
-              leaderboards={leaderboards}
               onSelectWeapon={applyWeaponSelection}
               onSelectPeek={applyPeekSelection}
               onSelectSpeed={applySpeedSelection}

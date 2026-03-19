@@ -21,8 +21,6 @@ import type {
   FeedbackPost,
   GameSettings,
   HomepageNotice,
-  LeaderboardCategory,
-  LeaderboardEntry,
   MessageTone,
   PeekSelection,
   PeekSpeedId,
@@ -30,7 +28,7 @@ import type {
   XpProgress,
 } from '../game/types.js'
 
-type MenuTab = 'play' | 'settings' | 'leaderboards' | 'admin'
+type MenuTab = 'play' | 'settings' | 'admin'
 
 interface MainMenuProps {
   settings: GameSettings
@@ -68,7 +66,6 @@ interface MainMenuProps {
     id: WeaponMode
     featured: boolean
   }>
-  leaderboardRefreshSeconds: number
   announcements: AdminAnnouncement[]
   bannerText: string
   featuredMessage: string
@@ -86,11 +83,6 @@ interface MainMenuProps {
     fakeGlobalChallenge: string
     jonsmanWasHereEnabled: boolean
   }
-  leaderboards: Array<{
-    id: LeaderboardCategory
-    label: string
-    entries: LeaderboardEntry[]
-  }>
   onSelectWeapon: (weapon: WeaponMode) => void
   onSelectPeek: (selectedPeek: PeekSelection) => void
   onSelectSpeed: (selectedSpeed: PeekSpeedId) => void
@@ -129,14 +121,12 @@ export function MainMenu({
   adminPanel,
   modeOptions,
   weaponOptions,
-  leaderboardRefreshSeconds,
   announcements,
   bannerText,
   featuredMessage,
   homepageNotices,
   lobbyMessage,
   specialTheme,
-  leaderboards,
   onSelectWeapon,
   onSelectPeek,
   onSelectSpeed,
@@ -154,7 +144,6 @@ export function MainMenu({
   const [loginPassword, setLoginPassword] = useState('')
   const [registerName, setRegisterName] = useState('')
   const [registerPassword, setRegisterPassword] = useState('')
-  const [activeLeaderboard, setActiveLeaderboard] = useState<LeaderboardCategory>('level')
   const resolvedTab = !isAdmin && activeTab === 'admin' ? 'play' : activeTab
 
   const handleTopPlayClick = () => {
@@ -327,9 +316,9 @@ export function MainMenu({
               </div>
             </div>
             <p className="menu-copy">
-              Anonymous play still saves XP, level, and combat stats to the shared server.
-              If you register from this profile, that server-side progression transfers into
-              the new account automatically.
+              Anonymous play still saves XP, level, and combat stats locally in this browser.
+              If you register from this profile, that local progression transfers into the
+              new account automatically on this device.
             </p>
             <div className="menu-meta account-meta">
               <div>
@@ -482,12 +471,6 @@ export function MainMenu({
               onClick={() => setActiveTab('settings')}
             >
               Settings <HotkeyHint label={UI_KEYBINDS.toggleSettings.label} />
-            </button>
-            <button
-              className={`menu-tab-button ${resolvedTab === 'leaderboards' ? 'is-active' : ''}`}
-              onClick={() => setActiveTab('leaderboards')}
-            >
-              Leaderboards
             </button>
             {isAdmin && adminPanel && (
               <button
@@ -644,80 +627,6 @@ export function MainMenu({
           <div className="menu-settings-shell">
             <SettingsPanel settings={settings} onChange={onSettingsChange} />
             <div className="settings-account-shell">{renderAccountSettings()}</div>
-          </div>
-        )}
-
-        {resolvedTab === 'leaderboards' && (
-          <div className="leaderboard-shell">
-            <div className="segment-grid segment-grid-peeks leaderboard-filter-grid">
-              {leaderboards.map((category) => (
-                <button
-                  key={category.id}
-                  type="button"
-                  className={`segment-button ${
-                    activeLeaderboard === category.id ? 'is-active' : ''
-                  }`}
-                  onClick={() => setActiveLeaderboard(category.id)}
-                >
-                  {category.label}
-                </button>
-              ))}
-            </div>
-
-            <p className="leaderboard-refresh-note">
-              Leaderboards refresh automatically every {leaderboardRefreshSeconds} seconds.
-            </p>
-
-            <div className="leaderboard-list">
-              {(leaderboards.find((category) => category.id === activeLeaderboard)?.entries ?? []).map(
-                (entry, index) => {
-                  const nameStyle =
-                    !entry.admin && entry.nameColor
-                      ? ({ color: entry.nameColor } as CSSProperties)
-                      : undefined
-
-                  return (
-                    <div
-                      key={`${activeLeaderboard}-${entry.accountName ?? entry.name}-${index}`}
-                      className={`leaderboard-row ${entry.admin ? 'is-admin-highlight' : ''} ${
-                        entry.featured ? 'is-featured' : ''
-                      } ${entry.pinned ? 'is-pinned' : ''} ${entry.bot ? 'is-bot' : ''}`}
-                    >
-                      <div className="leaderboard-rank">#{index + 1}</div>
-                      <div>
-                        <div className="leaderboard-name-line">
-                          <strong
-                            className={entry.admin ? 'leaderboard-name-admin' : ''}
-                            style={nameStyle}
-                          >
-                            {entry.name}
-                          </strong>
-                          {entry.badges?.map((badge) => (
-                            <span
-                              key={`${entry.name}-${badge.id}`}
-                              className={`leaderboard-badge leaderboard-badge-${badge.style}`}
-                              style={{ '--badge-color': badge.color } as CSSProperties}
-                            >
-                              {badge.label}
-                            </span>
-                          ))}
-                        </div>
-                        {entry.secondaryValue && <span>{entry.secondaryValue}</span>}
-                      </div>
-                      <b>{entry.value}</b>
-                    </div>
-                  )
-                },
-              )}
-
-              {(leaderboards.find((category) => category.id === activeLeaderboard)?.entries.length ?? 0) ===
-                0 && (
-                <p className="empty-copy">
-                  No saved players yet. Play anonymously or create an account to populate the
-                  boards.
-                </p>
-              )}
-            </div>
           </div>
         )}
 

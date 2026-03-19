@@ -1,6 +1,5 @@
 import {
   startTransition,
-  useCallback,
   useEffect,
   useEffectEvent,
   useRef,
@@ -26,26 +25,14 @@ import {
   ADMIN_USERNAME,
 } from './admin.js'
 import {
-  bootstrapSessionFromServer,
-  sendProgressionBatchBeacon,
-  fetchCommunityFromServer,
-  fetchLeaderboardsFromServer,
-  loginOnServer,
-  logoutOnServer,
-  registerOnServer,
-  submitFeedbackToServer,
-  syncAdminAuthStateToServer,
-  syncAdminFeedbackStateToServer,
-  syncAdminStateToServer,
-  syncProgressionBatchToServer,
-} from './api.js'
-import {
-  LEADERBOARD_CATEGORIES,
   createEmptyAnonymousProfile,
   createEmptyAccountStats,
   getActiveAccount,
   getProgressionProfile,
+  loginAccount,
   loadAuthState,
+  logoutAccount,
+  registerAccount,
   saveAuthState,
   updateAccountProgress,
 } from './auth.js'
@@ -59,13 +46,8 @@ import {
 import {
   loadFeedbackState,
   saveFeedbackState,
+  submitFeedbackPost,
 } from './feedback.js'
-import {
-  loadProgressionQueue,
-  saveProgressionQueue,
-  stripQueuedProgressionEvent,
-  type QueuedProgressionEvent,
-} from './progressionSync.js'
 import {
   applySettings,
   cycleScopeLevel,
@@ -94,19 +76,14 @@ import type {
   FeedbackState,
   GameSettings,
   HomepageNotice,
-  LeaderboardSnapshot,
-  LeaderboardBot,
   PeekSelection,
   WeaponMode,
 } from './types.js'
 
 const loadedState = loadPersistentState()
-const loadedLegacyAuthState = loadAuthState()
+const loadedAuthState = loadAuthState()
 const loadedCachedFeedbackState = loadFeedbackState()
 const loadedCachedAdminState = loadAdminState()
-const loadedProgressionQueue = loadProgressionQueue()
-const LEGACY_ANONYMOUS_MIGRATED_KEY = 'midlane-reaction-legacy-anonymous-migrated'
-const PROGRESSION_AUTOSAVE_MS = 10_000
 
 const normalizeLookupName = (value: string | null | undefined) =>
   value?.trim().toLowerCase() ?? ''
@@ -126,32 +103,6 @@ const hasMeaningfulStats = (stats: AccountStats) =>
   stats.qualifyingReactionCount > 0 ||
   stats.fastestReactionMs !== null ||
   stats.bestScore > 0
-
-const applyQueuedProgressionToState = (
-  state: AuthState,
-  event: QueuedProgressionEvent,
-): AuthState => {
-  const currentProfile = getProgressionProfile(state)
-  return updateAccountProgress(state, getActiveAccount(state)?.name ?? null, {
-    xp: currentProfile.xp + event.xpDelta,
-    shotsDelta: event.shotsDelta,
-    killsDelta: event.killsDelta,
-    headshotsDelta: event.headshotsDelta,
-    wallbangsDelta: event.wallbangsDelta,
-    reactionTime: event.reactionTimes[event.reactionTimes.length - 1] ?? null,
-    reactionTimes: event.reactionTimes,
-    score: event.score,
-  })
-}
-
-const overlayQueuedProgression = (
-  state: AuthState,
-  queue: QueuedProgressionEvent[],
-): AuthState =>
-  queue.reduce(
-    (currentState, event) => applyQueuedProgressionToState(currentState, event),
-    state,
-  )
 
 const mergeStats = (base: AccountStats, bonus: AccountStats): AccountStats => ({
   shots: base.shots + bonus.shots,
@@ -181,30 +132,13 @@ const clearReactionStats = (stats: AccountStats): AccountStats => ({
 const createForcedRename = () =>
   `Renamed-${Math.floor(Math.random() * 900 + 100)}`
 
-const createBotStatsFromAverage = (
-  kills: number,
-  headshots: number,
-  wallbangs: number,
-  averageReactionMs: number,
-): AccountStats => ({
-  shots: Math.max(kills + Math.round(kills * 0.28), kills),
-  kills,
-  headshots: Math.min(headshots, kills),
-  wallbangs: Math.min(wallbangs, kills),
-  cumulativeReactionMs: Math.max(kills, 1) * averageReactionMs,
-  qualifyingReactionMs: Math.max(kills, 1) * averageReactionMs,
-  qualifyingReactionCount: Math.max(kills, 1),
-  fastestReactionMs: averageReactionMs,
-  bestScore: Math.min(100, Math.max(40, Math.round(1000 / Math.max(averageReactionMs, 1)))),
-})
-
 const createInitialRuntime = () => {
   const runtime = createGameRuntime(
     withDerivedMode(loadedState.settings),
     loadedState.history,
     loadedState.lifetime,
   )
-  const initialProfile = getProgressionProfile(loadedLegacyAuthState)
+  const initialProfile = getProgressionProfile(loadedAuthState)
   setAccountSession(
     runtime,
     initialProfile.displayName,
@@ -212,12 +146,6 @@ const createInitialRuntime = () => {
   )
   return runtime
 }
-
-const createEmptyLeaderboards = (): LeaderboardSnapshot[] =>
-  LEADERBOARD_CATEGORIES.map((category) => ({
-    ...category,
-    entries: [],
-  }))
 
 const getAudioVolume = (settings: GameSettings) =>
   settings.soundEnabled ? Math.max(0, Math.min(settings.masterVolume, 1)) : 0
@@ -233,23 +161,15 @@ export const useReactionTrainer = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const audioRef = useRef<ReturnType<typeof createAudioBus> | null>(null)
   const runtimeRef = useRef<ReturnType<typeof createGameRuntime>>(null as never)
-  const initialServerSyncDoneRef = useRef(false)
-  const legacyAnonymousMigrationPendingRef = useRef(
-    typeof window !== 'undefined' &&
-      window.localStorage.getItem(LEGACY_ANONYMOUS_MIGRATED_KEY) !== '1',
-  )
   if (!runtimeRef.current) {
     runtimeRef.current = createInitialRuntime()
   }
   const [settings, setSettings] = useState<GameSettings>(
     withDerivedMode(loadedState.settings),
   )
-  const [authState, setAuthState] = useState<AuthState>(loadedLegacyAuthState)
+  const [authState, setAuthState] = useState<AuthState>(loadedAuthState)
   const [feedbackState, setFeedbackState] = useState<FeedbackState>(loadedCachedFeedbackState)
   const [adminState, setAdminState] = useState<AdminState>(loadedCachedAdminState)
-  const [leaderboards, setLeaderboards] = useState<LeaderboardSnapshot[]>(
-    createEmptyLeaderboards(),
-  )
   const [authMessage, setAuthMessage] = useState<string | null>(null)
   const [adminStatus, setAdminStatus] = useState<{
     tone: 'good' | 'warn'
@@ -266,9 +186,6 @@ export const useReactionTrainer = () => {
   })
   const [snapshot, setSnapshot] = useState(() => getSnapshot(runtimeRef.current))
   const lastProgressSnapshotRef = useRef(getSnapshot(runtimeRef.current))
-  const progressionQueueRef = useRef<QueuedProgressionEvent[]>(loadedProgressionQueue)
-  const progressionFlushPromiseRef = useRef<Promise<boolean> | null>(null)
-  const lastPhaseRef = useRef(snapshot.phase)
   const activeAccount = getActiveAccount(authState)
   const progressionProfile = getProgressionProfile(authState)
   const isAdmin = isAdminAccountName(activeAccount?.name ?? null)
@@ -277,180 +194,6 @@ export const useReactionTrainer = () => {
     startTransition(() => {
       setSnapshot(getSnapshot(runtimeRef.current))
     })
-  }
-
-  const persistProgressionQueue = useCallback((queue: QueuedProgressionEvent[]) => {
-    progressionQueueRef.current = queue
-    saveProgressionQueue(queue)
-  }, [])
-
-  const queueProgressionEvent = useCallback((event: QueuedProgressionEvent) => {
-    persistProgressionQueue([...progressionQueueRef.current, event].slice(-250))
-  }, [persistProgressionQueue])
-
-  const flushProgressionQueue = useCallback(
-    async ({
-      reason,
-      refreshLeaderboards = true,
-    }: {
-      reason: string
-      refreshLeaderboards?: boolean
-    }) => {
-      if (progressionQueueRef.current.length === 0) {
-        return true
-      }
-
-      if (!initialServerSyncDoneRef.current) {
-        return false
-      }
-
-      if (progressionFlushPromiseRef.current) {
-        return progressionFlushPromiseRef.current
-      }
-
-      const requestPromise = (async () => {
-        const queuedEvents = progressionQueueRef.current
-        if (queuedEvents.length === 0) {
-          return true
-        }
-
-        try {
-          const result = await syncProgressionBatchToServer({
-            events: queuedEvents.map(stripQueuedProgressionEvent),
-            reason,
-          })
-          const acceptedEventIds = new Set(result.acceptedEventIds)
-          const remainingQueue = progressionQueueRef.current.filter(
-            (event) => !acceptedEventIds.has(event.eventId),
-          )
-          const optimisticAuthState = overlayQueuedProgression(
-            result.authState,
-            remainingQueue,
-          )
-
-          persistProgressionQueue(remainingQueue)
-          startTransition(() => {
-            setAuthState(optimisticAuthState)
-          })
-
-          if (refreshLeaderboards) {
-            const nextLeaderboards = await fetchLeaderboardsFromServer()
-            startTransition(() => {
-              setLeaderboards(nextLeaderboards)
-            })
-          }
-
-          return true
-        } catch (error) {
-          console.warn(`[progression-sync] flush failed during ${reason}`, error)
-          return false
-        } finally {
-          progressionFlushPromiseRef.current = null
-        }
-      })()
-
-      progressionFlushPromiseRef.current = requestPromise
-      return requestPromise
-    },
-    [persistProgressionQueue],
-  )
-
-  const flushProgressionQueueWithBeacon = useCallback((reason: string) => {
-    if (progressionQueueRef.current.length === 0) {
-      return
-    }
-
-    const sent = sendProgressionBatchBeacon({
-      events: progressionQueueRef.current.map(stripQueuedProgressionEvent),
-      reason,
-    })
-    if (!sent) {
-      console.warn(`[progression-sync] sendBeacon failed during ${reason}`)
-    }
-  }, [])
-
-  const ensureProgressionReadyForAuthMutation = useCallback(
-    async (intentLabel: string) => {
-      if (progressionQueueRef.current.length === 0) {
-        return true
-      }
-
-      if (!initialServerSyncDoneRef.current) {
-        setAuthMessage(
-          'The shared profile is still connecting. Please try again in a moment so your current progress can be saved safely.',
-        )
-        return false
-      }
-
-      const flushed = await flushProgressionQueue({
-        reason: intentLabel,
-        refreshLeaderboards: false,
-      })
-
-      if (!flushed) {
-        setAuthMessage(
-          'Current progression could not be saved to the server yet. Please try again after the connection recovers.',
-        )
-      }
-
-      return flushed
-    },
-    [flushProgressionQueue],
-  )
-
-  const refreshSharedState = async ({
-    migrateLegacyAnonymous = false,
-    preserveAuthMessage = false,
-  }: {
-    migrateLegacyAnonymous?: boolean
-    preserveAuthMessage?: boolean
-  } = {}) => {
-    try {
-      const shouldMigrateLegacyAnonymous =
-        migrateLegacyAnonymous && legacyAnonymousMigrationPendingRef.current
-      const session = await bootstrapSessionFromServer(
-        shouldMigrateLegacyAnonymous
-          ? { legacyAnonymousProfile: loadedLegacyAuthState.anonymousProfile }
-          : undefined,
-      )
-      const [community, nextLeaderboards] = await Promise.all([
-        fetchCommunityFromServer(),
-        fetchLeaderboardsFromServer(),
-      ])
-
-      if (shouldMigrateLegacyAnonymous && typeof window !== 'undefined') {
-        window.localStorage.setItem(LEGACY_ANONYMOUS_MIGRATED_KEY, '1')
-        legacyAnonymousMigrationPendingRef.current = false
-      }
-
-      setAdminRuntimeState(community.adminState)
-      const optimisticAuthState = overlayQueuedProgression(
-        session.authState,
-        progressionQueueRef.current,
-      )
-      startTransition(() => {
-        setAuthState(optimisticAuthState)
-        setFeedbackState(community.feedbackState)
-        setAdminState(community.adminState)
-        setLeaderboards(nextLeaderboards)
-        setAuthMessage((current) =>
-          session.authMessage !== null
-            ? session.authMessage
-            : preserveAuthMessage
-              ? current
-              : null,
-        )
-      })
-      initialServerSyncDoneRef.current = true
-    } catch (error) {
-      if (!initialServerSyncDoneRef.current) {
-        setAuthMessage(
-          error instanceof Error
-            ? `Server sync failed: ${error.message}`
-            : 'Server sync failed.',
-        )
-      }
-    }
   }
 
   useEffect(() => {
@@ -476,110 +219,6 @@ export const useReactionTrainer = () => {
   useEffect(() => {
     saveAdminState(adminState)
   }, [adminState])
-
-  useEffect(() => {
-    let cancelled = false
-
-    const bootstrapSharedState = async () => {
-      await refreshSharedState({
-        migrateLegacyAnonymous: true,
-        preserveAuthMessage: true,
-      })
-
-      if (!cancelled && progressionQueueRef.current.length > 0) {
-        void flushProgressionQueue({
-          reason: 'post-bootstrap',
-        })
-      }
-    }
-
-    void bootstrapSharedState()
-    const interval = window.setInterval(
-      () => {
-        void refreshSharedState({
-          preserveAuthMessage: true,
-        })
-      },
-      adminState.leaderboardAutoRefreshSeconds * 1000,
-    )
-    return () => {
-      cancelled = true
-      window.clearInterval(interval)
-    }
-  }, [adminState.leaderboardAutoRefreshSeconds, flushProgressionQueue])
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      if (progressionQueueRef.current.length === 0) {
-        return
-      }
-
-      void flushProgressionQueue({
-        reason: 'autosave',
-      })
-    }, PROGRESSION_AUTOSAVE_MS)
-
-    return () => {
-      window.clearInterval(interval)
-    }
-  }, [flushProgressionQueue])
-
-  useEffect(() => {
-    const nextPhase = snapshot.phase
-    const previousPhase = lastPhaseRef.current
-    lastPhaseRef.current = nextPhase
-
-    if (
-      previousPhase !== nextPhase &&
-      (nextPhase === 'cooldown' ||
-        nextPhase === 'result' ||
-        nextPhase === 'summary' ||
-        nextPhase === 'menu') &&
-      progressionQueueRef.current.length > 0
-    ) {
-      void flushProgressionQueue({
-        reason: `phase-${nextPhase}`,
-      })
-    }
-  }, [snapshot.phase, flushProgressionQueue])
-
-  useEffect(() => {
-    const onVisibilityChange = () => {
-      if (document.visibilityState !== 'hidden') {
-        return
-      }
-
-      void flushProgressionQueue({
-        reason: 'visibility-hidden',
-        refreshLeaderboards: false,
-      })
-      flushProgressionQueueWithBeacon('visibility-hidden-beacon')
-    }
-
-    const onPageHide = () => {
-      flushProgressionQueueWithBeacon('pagehide')
-    }
-
-    const onOnline = () => {
-      if (progressionQueueRef.current.length === 0) {
-        return
-      }
-
-      void flushProgressionQueue({
-        reason: 'network-restored',
-      })
-    }
-
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    window.addEventListener('pagehide', onPageHide)
-    window.addEventListener('online', onOnline)
-
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-      window.removeEventListener('pagehide', onPageHide)
-      window.removeEventListener('online', onOnline)
-    }
-  }, [flushProgressionQueue, flushProgressionQueueWithBeacon])
 
   useEffect(() => {
     const nextProfile = getProgressionProfile(authState)
@@ -636,9 +275,8 @@ export const useReactionTrainer = () => {
     const reactionTime =
       reactionTimes.length > 0 ? reactionTimes[reactionTimes.length - 1] : null
     const score = killsDelta > 0 ? currentSnapshot.lastResult?.score ?? null : null
-    const xpDelta = Math.max(runtime.accountXp - progressionProfile.xp, 0)
     const hasMeaningfulProgressChange =
-      xpDelta > 0 ||
+      runtime.accountXp > progressionProfile.xp ||
       shotsDelta > 0 ||
       killsDelta > 0 ||
       headshotsDelta > 0 ||
@@ -662,36 +300,9 @@ export const useReactionTrainer = () => {
         score,
       }),
     )
-
-    queueProgressionEvent({
-      eventId: `progress-${currentSnapshot.persistenceVersion}-${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2, 8)}`,
-      queuedAt: Date.now(),
-      xpDelta,
-      shotsDelta,
-      killsDelta,
-      headshotsDelta,
-      wallbangsDelta,
-      reactionTimes,
-      score,
-    })
-
-    if (
-      currentSnapshot.phase === 'cooldown' ||
-      currentSnapshot.phase === 'result' ||
-      currentSnapshot.phase === 'summary' ||
-      currentSnapshot.phase === 'menu'
-    ) {
-      void flushProgressionQueue({
-        reason: `progress-${currentSnapshot.phase}`,
-      })
-    }
   }, [
     progressionProfile.xp,
-    queueProgressionEvent,
     snapshot.persistenceVersion,
-    flushProgressionQueue,
   ])
 
   useEffect(() => {
@@ -817,13 +428,6 @@ export const useReactionTrainer = () => {
     beginSession()
   }
 
-  const findLegacyAccount = (name: string, password: string) =>
-    loadedLegacyAuthState.accounts.find(
-      (account) =>
-        normalizeLookupName(account.name) === normalizeLookupName(name) &&
-        account.password === password.trim(),
-    ) ?? null
-
   const applyAuthUpdate = (nextState: AuthState, message: string | null) => {
     const nextProfile = getProgressionProfile(nextState)
     setAuthState(nextState)
@@ -837,56 +441,17 @@ export const useReactionTrainer = () => {
   }
 
   const login = (name: string, password: string) => {
-    void (async () => {
-      const ready = await ensureProgressionReadyForAuthMutation('before-login')
-      if (!ready) {
-        return
-      }
-
-      const result = await loginOnServer({
-        name,
-        password,
-        legacyAccount: findLegacyAccount(name, password),
-      })
-      applyAuthUpdate(result.authState, result.message)
-      await refreshSharedState({ preserveAuthMessage: true })
-    })().catch((error) => {
-      setAuthMessage(error instanceof Error ? error.message : 'Login failed.')
-    })
+    const result = loginAccount(authState, name, password)
+    applyAuthUpdate(result.state, result.message)
   }
 
   const register = (name: string, password: string) => {
-    void (async () => {
-      const ready = await ensureProgressionReadyForAuthMutation('before-register')
-      if (!ready) {
-        return
-      }
-
-      const result = await registerOnServer({
-        name,
-        password,
-        legacyAccount: findLegacyAccount(name, password),
-      })
-      applyAuthUpdate(result.authState, result.message)
-      await refreshSharedState({ preserveAuthMessage: true })
-    })().catch((error) => {
-      setAuthMessage(error instanceof Error ? error.message : 'Register failed.')
-    })
+    const result = registerAccount(authState, name, password)
+    applyAuthUpdate(result.state, result.message)
   }
 
   const logout = () => {
-    void (async () => {
-      const ready = await ensureProgressionReadyForAuthMutation('before-logout')
-      if (!ready) {
-        return
-      }
-
-      const result = await logoutOnServer()
-      applyAuthUpdate(result.authState, result.message)
-      await refreshSharedState({ preserveAuthMessage: true })
-    })().catch((error) => {
-      setAuthMessage(error instanceof Error ? error.message : 'Logout failed.')
-    })
+    applyAuthUpdate(logoutAccount(authState), 'Logged out. Progress stays on this browser.')
   }
 
   interface AdminMutation {
@@ -990,41 +555,6 @@ export const useReactionTrainer = () => {
       message: mutation.message,
     })
     syncSnapshot()
-
-    void Promise.all([
-      syncAdminStateToServer(nextAdminState),
-      mutation.authState ? syncAdminAuthStateToServer(nextAuthState) : Promise.resolve(null),
-      mutation.feedbackState
-        ? syncAdminFeedbackStateToServer(nextFeedbackState)
-        : Promise.resolve(null),
-    ])
-      .then(([, syncedAuth, syncedFeedback]) => {
-        if (syncedAuth) {
-          startTransition(() => {
-            setAuthState(syncedAuth.authState)
-          })
-        }
-
-        if (syncedFeedback) {
-          startTransition(() => {
-            setFeedbackState(syncedFeedback.feedbackState)
-          })
-        }
-
-        return fetchLeaderboardsFromServer()
-      })
-      .then((nextLeaderboards) => {
-        startTransition(() => {
-          setLeaderboards(nextLeaderboards)
-        })
-      })
-      .catch((error) => {
-        setAdminStatus({
-          tone: 'warn',
-          message:
-            error instanceof Error ? error.message : 'Admin server sync failed.',
-        })
-      })
     return true
   }
 
@@ -2673,92 +2203,60 @@ export const useReactionTrainer = () => {
   }
 
   const submitBugReport = async (body: string) => {
-    try {
-      const result = await submitFeedbackToServer({
-        category: 'bug-report',
-        body,
-      })
-      setFeedbackState(result.feedbackState)
-      setAuthState(result.authState)
-      setFeedbackStatus((current) => ({
-        ...current,
-        bugReport: {
-          tone: result.ok ? 'good' : 'warn',
-          message: result.message,
-        },
-      }))
-      return result.ok
-    } catch (error) {
-      setFeedbackStatus((current) => ({
-        ...current,
-        bugReport: {
-          tone: 'warn',
-          message:
-            error instanceof Error ? error.message : 'Bug report submission failed.',
-        },
-      }))
-      return false
-    }
+    const result = submitFeedbackPost({
+      feedbackState,
+      authState,
+      category: 'bug-report',
+      body,
+    })
+    setFeedbackState(result.feedbackState)
+    setAuthState(result.authState)
+    setFeedbackStatus((current) => ({
+      ...current,
+      bugReport: {
+        tone: result.ok ? 'good' : 'warn',
+        message: result.message,
+      },
+    }))
+    return result.ok
   }
 
   const submitFeatureRequest = async (body: string) => {
-    try {
-      const result = await submitFeedbackToServer({
-        category: 'feature-request',
-        body,
-      })
-      setFeedbackState(result.feedbackState)
-      setAuthState(result.authState)
-      setFeedbackStatus((current) => ({
-        ...current,
-        featureRequest: {
-          tone: result.ok ? 'good' : 'warn',
-          message: result.message,
-        },
-      }))
-      return result.ok
-    } catch (error) {
-      setFeedbackStatus((current) => ({
-        ...current,
-        featureRequest: {
-          tone: 'warn',
-          message:
-            error instanceof Error
-              ? error.message
-              : 'Feature request submission failed.',
-        },
-      }))
-      return false
-    }
+    const result = submitFeedbackPost({
+      feedbackState,
+      authState,
+      category: 'feature-request',
+      body,
+    })
+    setFeedbackState(result.feedbackState)
+    setAuthState(result.authState)
+    setFeedbackStatus((current) => ({
+      ...current,
+      featureRequest: {
+        tone: result.ok ? 'good' : 'warn',
+        message: result.message,
+      },
+    }))
+    return result.ok
   }
 
   const submitReview = async (body: string) => {
-    try {
-      const result = await submitFeedbackToServer({
-        category: 'review',
-        body,
-      })
-      setFeedbackState(result.feedbackState)
-      setAuthState(result.authState)
-      setFeedbackStatus((current) => ({
-        ...current,
-        review: {
-          tone: result.ok ? 'good' : 'warn',
-          message: result.message,
-        },
-      }))
-      return result.ok
-    } catch (error) {
-      setFeedbackStatus((current) => ({
-        ...current,
-        review: {
-          tone: 'warn',
-          message:
-            error instanceof Error ? error.message : 'Feedback submission failed.',
-        },
-      }))
-      return false
-    }
+    const result = submitFeedbackPost({
+      feedbackState,
+      authState,
+      category: 'review',
+      body,
+    })
+    setFeedbackState(result.feedbackState)
+    setAuthState(result.authState)
+    setFeedbackStatus((current) => ({
+      ...current,
+      review: {
+        tone: result.ok ? 'good' : 'warn',
+        message: result.message,
+      },
+    }))
+    return result.ok
   }
 
   const onStageMouseMove = (event: ReactMouseEvent<HTMLCanvasElement>) => {
