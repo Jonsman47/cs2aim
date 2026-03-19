@@ -1,4 +1,5 @@
-import { useLayoutEffect, useState, type FormEvent } from 'react'
+import { useLayoutEffect, useState, type CSSProperties, type FormEvent } from 'react'
+import { AdminPanel, type AdminPanelModel } from './AdminPanel.tsx'
 import { FeedbackHub } from './FeedbackHub.tsx'
 import { HotkeyHint } from './HotkeyHint.tsx'
 import { PeekPreviewArt } from './PeekPreviewArt.tsx'
@@ -6,31 +7,30 @@ import { SettingsPanel } from './SettingsPanel.tsx'
 import { WeaponPreviewArt } from './WeaponPreviewArt.tsx'
 import {
   MODE_LABELS,
-  PEEK_SELECTION_DETAILS,
   PEEK_SELECTION_LABELS,
-  PEEK_SELECTIONS,
-  POPULAR_PEEK_SELECTIONS,
   PEEK_SPEED_DETAILS,
   PEEK_SPEED_LABELS,
   PEEK_SPEEDS,
   UI_KEYBINDS,
   WEAPON_LABELS,
   WEAPON_PICKER_DETAILS,
-  WEAPON_SELECTIONS,
   formatPeekSelectionLabel,
 } from '../game/constants.ts'
 import type {
+  AdminAnnouncement,
   FeedbackPost,
   GameSettings,
+  HomepageNotice,
   LeaderboardCategory,
   LeaderboardEntry,
+  MessageTone,
   PeekSelection,
   PeekSpeedId,
   WeaponMode,
   XpProgress,
 } from '../game/types.ts'
 
-type MenuTab = 'play' | 'settings' | 'leaderboards'
+type MenuTab = 'play' | 'settings' | 'leaderboards' | 'admin'
 
 interface MainMenuProps {
   settings: GameSettings
@@ -51,6 +51,40 @@ interface MainMenuProps {
     isLoggedIn: boolean
     bugReportLastSubmittedAt: number | null
     featureRequestLastSubmittedAt: number | null
+  }
+  isAdmin: boolean
+  adminBadgeVisible: boolean
+  adminPanel: AdminPanelModel | null
+  modeOptions: Array<{
+    id: PeekSelection
+    description: string
+    popular: boolean
+    highlightColor: string
+    previewVariantClass: string
+    featured: boolean
+    experimental: boolean
+  }>
+  weaponOptions: Array<{
+    id: WeaponMode
+    featured: boolean
+  }>
+  leaderboardRefreshSeconds: number
+  announcements: AdminAnnouncement[]
+  bannerText: string
+  featuredMessage: string
+  homepageNotices: HomepageNotice[]
+  lobbyMessage: string
+  specialTheme: {
+    seasonalClass: string
+    jonsmanThemeClass: string
+    accentColor: string
+    footerText: string
+    footerStyle: 'default' | 'gradient' | 'glow'
+    confettiEnabled: boolean
+    specialUiHighlights: boolean
+    goofyEventTitle: string
+    fakeGlobalChallenge: string
+    jonsmanWasHereEnabled: boolean
   }
   leaderboards: Array<{
     id: LeaderboardCategory
@@ -76,6 +110,8 @@ const formatReaction = (value: number | null) =>
 const formatLevelProgress = (xp: XpProgress) =>
   `${xp.xpIntoLevel.toLocaleString()} XP / ${xp.xpNeededForNextLevel.toLocaleString()} XP`
 
+const toneClassName = (tone: MessageTone) => `tone-${tone}`
+
 export function MainMenu({
   settings,
   lifetimeBest,
@@ -88,6 +124,18 @@ export function MainMenu({
   feedbackPosts,
   feedbackStatus,
   feedbackAccess,
+  isAdmin,
+  adminBadgeVisible,
+  adminPanel,
+  modeOptions,
+  weaponOptions,
+  leaderboardRefreshSeconds,
+  announcements,
+  bannerText,
+  featuredMessage,
+  homepageNotices,
+  lobbyMessage,
+  specialTheme,
   leaderboards,
   onSelectWeapon,
   onSelectPeek,
@@ -107,6 +155,7 @@ export function MainMenu({
   const [registerName, setRegisterName] = useState('')
   const [registerPassword, setRegisterPassword] = useState('')
   const [activeLeaderboard, setActiveLeaderboard] = useState<LeaderboardCategory>('level')
+  const resolvedTab = !isAdmin && activeTab === 'admin' ? 'play' : activeTab
 
   const handleTopPlayClick = () => {
     setActiveTab('play')
@@ -141,7 +190,7 @@ export function MainMenu({
         return
       }
 
-      if (event.code === UI_KEYBINDS.startSelected.code && activeTab === 'play') {
+      if (event.code === UI_KEYBINDS.startSelected.code && resolvedTab === 'play') {
         event.preventDefault()
         onStartSelected()
       }
@@ -151,7 +200,7 @@ export function MainMenu({
     return () => {
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [activeTab, onStartSelected])
+  }, [onStartSelected, resolvedTab])
 
   const renderAccountSettings = () => {
     if (loggedInAccountName && xp) {
@@ -167,7 +216,14 @@ export function MainMenu({
           <div className="menu-meta account-meta">
             <div>
               <span>Logged In As</span>
-              <strong>{loggedInAccountName}</strong>
+              <div className="leaderboard-name-line">
+                <strong className={isAdmin ? 'leaderboard-name-admin' : ''}>
+                  {loggedInAccountName}
+                </strong>
+                {isAdmin && adminBadgeVisible && (
+                  <span className="leaderboard-admin-badge">Admin</span>
+                )}
+              </div>
             </div>
             <div>
               <span>Level</span>
@@ -303,9 +359,108 @@ export function MainMenu({
     )
   }
 
+  const renderSiteSignals = () => {
+    const hasTopSignals =
+      bannerText.trim() ||
+      announcements.length > 0 ||
+      featuredMessage.trim() ||
+      lobbyMessage.trim() ||
+      homepageNotices.length > 0 ||
+      specialTheme.goofyEventTitle.trim() ||
+      specialTheme.fakeGlobalChallenge.trim() ||
+      specialTheme.jonsmanWasHereEnabled
+
+    if (!hasTopSignals) {
+      return null
+    }
+
+    return (
+      <div className="menu-story-stack">
+        {bannerText.trim() && (
+          <div className="menu-banner-strip">
+            <strong>Announcement</strong>
+            <span>{bannerText}</span>
+          </div>
+        )}
+
+        {announcements.length > 0 && (
+          <div className="menu-notice-grid">
+            {announcements.map((announcement) => (
+              <article
+                key={announcement.id}
+                className={`menu-signal-card ${toneClassName(announcement.tone)}`}
+              >
+                <strong>{announcement.text}</strong>
+                {announcement.expiresAt !== null && (
+                  <span>
+                    Until{' '}
+                    {new Intl.DateTimeFormat(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    }).format(announcement.expiresAt)}
+                  </span>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+
+        <div className="menu-notice-grid">
+          {featuredMessage.trim() && (
+            <article className="menu-signal-card tone-good">
+              <strong>Featured Message</strong>
+              <span>{featuredMessage}</span>
+            </article>
+          )}
+          {lobbyMessage.trim() && (
+            <article className="menu-signal-card tone-neutral">
+              <strong>Lobby Message</strong>
+              <span>{lobbyMessage}</span>
+            </article>
+          )}
+          {specialTheme.goofyEventTitle.trim() && (
+            <article className="menu-signal-card tone-bonus">
+              <strong>Goofy Event</strong>
+              <span>{specialTheme.goofyEventTitle}</span>
+            </article>
+          )}
+          {specialTheme.fakeGlobalChallenge.trim() && (
+            <article className="menu-signal-card tone-warn">
+              <strong>Global Challenge</strong>
+              <span>{specialTheme.fakeGlobalChallenge}</span>
+            </article>
+          )}
+          {specialTheme.jonsmanWasHereEnabled && (
+            <article className="menu-signal-card tone-good">
+              <strong>Jonsman Was Here</strong>
+              <span>The admin highlight banner is active.</span>
+            </article>
+          )}
+        </div>
+
+        {homepageNotices.length > 0 && (
+          <div className="menu-notice-grid">
+            {homepageNotices.map((notice) => (
+              <article key={notice.id} className={`menu-signal-card ${toneClassName(notice.tone)}`}>
+                <strong>Notice</strong>
+                <span>{notice.text}</span>
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="menu-overlay">
-      <div className="menu-card menu-card-rich">
+      <div
+        className={`menu-card menu-card-rich ${specialTheme.confettiEnabled ? 'is-confetti' : ''} ${
+          specialTheme.specialUiHighlights ? 'has-special-highlights' : ''
+        } ${specialTheme.jonsmanThemeClass}`}
+      >
         <div className="menu-header">
           <div>
             <p className="eyebrow">cs2aim</p>
@@ -316,28 +471,38 @@ export function MainMenu({
 
           <div className="menu-tab-row">
             <button
-              className={`menu-tab-button ${activeTab === 'play' ? 'is-active' : ''}`}
+              className={`menu-tab-button ${resolvedTab === 'play' ? 'is-active' : ''}`}
               type="button"
               onClick={handleTopPlayClick}
             >
               Play <HotkeyHint label={UI_KEYBINDS.startSelected.label} />
             </button>
             <button
-              className={`menu-tab-button ${activeTab === 'settings' ? 'is-active' : ''}`}
+              className={`menu-tab-button ${resolvedTab === 'settings' ? 'is-active' : ''}`}
               onClick={() => setActiveTab('settings')}
             >
               Settings <HotkeyHint label={UI_KEYBINDS.toggleSettings.label} />
             </button>
             <button
-              className={`menu-tab-button ${activeTab === 'leaderboards' ? 'is-active' : ''}`}
+              className={`menu-tab-button ${resolvedTab === 'leaderboards' ? 'is-active' : ''}`}
               onClick={() => setActiveTab('leaderboards')}
             >
               Leaderboards
             </button>
+            {isAdmin && adminPanel && (
+              <button
+                className={`menu-tab-button ${resolvedTab === 'admin' ? 'is-active' : ''}`}
+                onClick={() => setActiveTab('admin')}
+              >
+                Admin Panel
+              </button>
+            )}
           </div>
         </div>
 
-        {activeTab === 'play' && (
+        {renderSiteSignals()}
+
+        {resolvedTab === 'play' && (
           <>
             <div className="menu-meta">
               <div>
@@ -362,7 +527,12 @@ export function MainMenu({
                 <span>Progression</span>
                 {accountName && xp ? (
                   <div className="progress-readout">
-                    <strong>{accountName}</strong>
+                    <div className="leaderboard-name-line">
+                      <strong className={isAdmin ? 'leaderboard-name-admin' : ''}>{accountName}</strong>
+                      {isAdmin && adminBadgeVisible && (
+                        <span className="leaderboard-admin-badge">Admin</span>
+                      )}
+                    </div>
                     <span className="progress-readout-detail">
                       Level {xp.level} / {formatLevelProgress(xp)}
                     </span>
@@ -383,24 +553,23 @@ export function MainMenu({
             </div>
 
             <div className="mode-grid">
-              {PEEK_SELECTIONS.map((selectedPeek) => {
-                const isPopular = POPULAR_PEEK_SELECTIONS.includes(selectedPeek)
-
-                return (
-                  <button
-                    key={selectedPeek}
-                    className={`mode-tile ${isPopular ? 'is-popular' : ''} ${
-                      settings.selectedPeek === selectedPeek ? 'is-active' : ''
-                    }`}
-                    onClick={() => onSelectPeek(selectedPeek)}
-                  >
-                    {isPopular && <span className="mode-popular-badge">Popular</span>}
-                    <span className="mode-name">{PEEK_SELECTION_LABELS[selectedPeek]}</span>
-                    <span className="mode-copy">{PEEK_SELECTION_DETAILS[selectedPeek]}</span>
-                    <PeekPreviewArt peek={selectedPeek} />
-                  </button>
-                )
-              })}
+              {modeOptions.map((option) => (
+                <button
+                  key={option.id}
+                  className={`mode-tile ${option.popular ? 'is-popular' : ''} ${
+                    option.featured ? 'is-featured' : ''
+                  } ${settings.selectedPeek === option.id ? 'is-active' : ''}`}
+                  style={{ '--mode-highlight': option.highlightColor } as CSSProperties}
+                  onClick={() => onSelectPeek(option.id)}
+                >
+                  {option.popular && <span className="mode-popular-badge">Popular</span>}
+                  {option.experimental && <span className="mode-experimental-badge">Experimental</span>}
+                  {option.featured && <span className="mode-featured-badge">Featured</span>}
+                  <span className="mode-name">{PEEK_SELECTION_LABELS[option.id]}</span>
+                  <span className="mode-copy">{option.description}</span>
+                  <PeekPreviewArt peek={option.id} className={option.previewVariantClass} />
+                </button>
+              ))}
             </div>
 
             <div className="subheading-row menu-subheading">
@@ -409,16 +578,18 @@ export function MainMenu({
             </div>
 
             <div className="weapon-grid">
-              {WEAPON_SELECTIONS.map((weapon) => (
+              {weaponOptions.map((option) => (
                 <button
-                  key={weapon}
-                  className={`weapon-tile ${settings.weapon === weapon ? 'is-active' : ''}`}
-                  onClick={() => onSelectWeapon(weapon)}
+                  key={option.id}
+                  className={`weapon-tile ${option.featured ? 'is-featured' : ''} ${
+                    settings.weapon === option.id ? 'is-active' : ''
+                  }`}
+                  onClick={() => onSelectWeapon(option.id)}
                 >
-                  <span className="mode-name">{WEAPON_LABELS[weapon]}</span>
-                  <span className="mode-copy">{WEAPON_PICKER_DETAILS[weapon].blurb}</span>
-                  <WeaponPreviewArt weapon={weapon} />
-                  <span className="weapon-rule">{WEAPON_PICKER_DETAILS[weapon].finishRule}</span>
+                  <span className="mode-name">{WEAPON_LABELS[option.id]}</span>
+                  <span className="mode-copy">{WEAPON_PICKER_DETAILS[option.id].blurb}</span>
+                  <WeaponPreviewArt weapon={option.id} />
+                  <span className="weapon-rule">{WEAPON_PICKER_DETAILS[option.id].finishRule}</span>
                 </button>
               ))}
             </div>
@@ -469,14 +640,14 @@ export function MainMenu({
           </>
         )}
 
-        {activeTab === 'settings' && (
+        {resolvedTab === 'settings' && (
           <div className="menu-settings-shell">
             <SettingsPanel settings={settings} onChange={onSettingsChange} />
             <div className="settings-account-shell">{renderAccountSettings()}</div>
           </div>
         )}
 
-        {activeTab === 'leaderboards' && (
+        {resolvedTab === 'leaderboards' && (
           <div className="leaderboard-shell">
             <div className="segment-grid segment-grid-peeks leaderboard-filter-grid">
               {leaderboards.map((category) => (
@@ -494,27 +665,42 @@ export function MainMenu({
             </div>
 
             <p className="leaderboard-refresh-note">
-              Leaderboards refresh automatically every 30 seconds.
+              Leaderboards refresh automatically every {leaderboardRefreshSeconds} seconds.
             </p>
 
             <div className="leaderboard-list">
               {(leaderboards.find((category) => category.id === activeLeaderboard)?.entries ?? []).map(
                 (entry, index) => {
-                  const isJonsman =
-                    (entry.accountName ?? entry.name).trim().toLowerCase() === 'jonsman'
+                  const nameStyle =
+                    !entry.admin && entry.nameColor
+                      ? ({ color: entry.nameColor } as CSSProperties)
+                      : undefined
 
                   return (
                     <div
                       key={`${activeLeaderboard}-${entry.accountName ?? entry.name}-${index}`}
-                      className={`leaderboard-row ${isJonsman ? 'is-admin-highlight' : ''}`}
+                      className={`leaderboard-row ${entry.admin ? 'is-admin-highlight' : ''} ${
+                        entry.featured ? 'is-featured' : ''
+                      } ${entry.pinned ? 'is-pinned' : ''} ${entry.bot ? 'is-bot' : ''}`}
                     >
                       <div className="leaderboard-rank">#{index + 1}</div>
                       <div>
                         <div className="leaderboard-name-line">
-                          <strong className={isJonsman ? 'leaderboard-name-admin' : ''}>
+                          <strong
+                            className={entry.admin ? 'leaderboard-name-admin' : ''}
+                            style={nameStyle}
+                          >
                             {entry.name}
                           </strong>
-                          {isJonsman && <span className="leaderboard-admin-badge">Admin</span>}
+                          {entry.badges?.map((badge) => (
+                            <span
+                              key={`${entry.name}-${badge.id}`}
+                              className={`leaderboard-badge leaderboard-badge-${badge.style}`}
+                              style={{ '--badge-color': badge.color } as CSSProperties}
+                            >
+                              {badge.label}
+                            </span>
+                          ))}
                         </div>
                         {entry.secondaryValue && <span>{entry.secondaryValue}</span>}
                       </div>
@@ -524,8 +710,8 @@ export function MainMenu({
                 },
               )}
 
-              {(leaderboards.find((category) => category.id === activeLeaderboard)?.entries.length ??
-                0) === 0 && (
+              {(leaderboards.find((category) => category.id === activeLeaderboard)?.entries.length ?? 0) ===
+                0 && (
                 <p className="empty-copy">
                   No saved players yet. Play anonymously or create an account to populate the
                   boards.
@@ -535,7 +721,11 @@ export function MainMenu({
           </div>
         )}
 
-        <p className="menu-footer">Made by Jonsman</p>
+        {resolvedTab === 'admin' && adminPanel && <AdminPanel panel={adminPanel} />}
+
+        <p className={`menu-footer menu-footer-${specialTheme.footerStyle}`}>
+          {specialTheme.footerText}
+        </p>
       </div>
     </div>
   )

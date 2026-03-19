@@ -1,3 +1,4 @@
+import { getAdminRuntimeState } from './admin.ts'
 import { clamp } from './math.ts'
 import type {
   BehaviorId,
@@ -160,6 +161,7 @@ export const evaluateShotReward = ({
   weapon,
   doorVisibilityAssist,
 }: ShotRewardInput): ShotReward => {
+  const adminState = getAdminRuntimeState()
   const { title, tone } = getTitleAndTone(scored, damaged, headshot, wallbang)
 
   let xpGained = SHOT_XP.miss
@@ -182,14 +184,29 @@ export const evaluateShotReward = ({
     xpGained += getComboXpBonus(headshot, wallbang)
   }
 
+  xpGained *=
+    adminState.xpMultiplier *
+    adminState.bonusXpEventMultiplier *
+    adminState.modeXpBonuses[behavior] *
+    adminState.weaponXpBonuses[weapon] *
+    adminState.weaponConfigs[weapon].xpBonusMultiplier
+
   return {
     title,
     tone,
-    xpGained: clamp(Math.round(xpGained), 0, MAX_XP_PER_SHOT),
+    xpGained: clamp(
+      Math.round(xpGained),
+      0,
+      adminState.maxXpPerShot || MAX_XP_PER_SHOT,
+    ),
   }
 }
 
 export const getLevelStartXp = (level: number) => {
+  const adminState = getAdminRuntimeState()
+  const levelOneRequirement = adminState.levelBaseXp || LEVEL_ONE_REQUIREMENT
+  const levelRequirementStep = adminState.levelStepXp || LEVEL_REQUIREMENT_STEP
+
   if (level <= 1) {
     return 0
   }
@@ -197,8 +214,8 @@ export const getLevelStartXp = (level: number) => {
   const completedLevels = level - 1
 
   return (
-    completedLevels * LEVEL_ONE_REQUIREMENT +
-    ((completedLevels - 1) * completedLevels * LEVEL_REQUIREMENT_STEP) / 2
+    completedLevels * levelOneRequirement +
+    ((completedLevels - 1) * completedLevels * levelRequirementStep) / 2
   )
 }
 

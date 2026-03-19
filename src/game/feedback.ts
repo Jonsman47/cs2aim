@@ -1,3 +1,4 @@
+import { getAdminRuntimeState } from './admin.ts'
 import {
   getActiveAccount,
   getLeaderboardDisplayName,
@@ -37,7 +38,8 @@ export const loadFeedbackState = (): FeedbackState => {
     return {
       posts: Array.isArray(parsed.posts)
         ? parsed.posts
-            .map((post) => ({
+            .map(
+              (post): FeedbackPost => ({
               id: typeof post.id === 'string' ? post.id : '',
               category:
                 post.category === 'bug-report' ||
@@ -55,7 +57,17 @@ export const loadFeedbackState = (): FeedbackState => {
                 typeof post.accountName === 'string' && post.accountName.trim()
                   ? post.accountName
                   : null,
-            }))
+              status:
+                post.status === 'reviewed' ||
+                post.status === 'fixed' ||
+                post.status === 'planned' ||
+                post.status === 'rejected' ||
+                post.status === 'added'
+                  ? post.status
+                  : 'open',
+              pinned: Boolean(post.pinned),
+              }),
+            )
             .filter((post) => post.id && post.body)
             .slice(0, MAX_FEEDBACK_POSTS)
         : [],
@@ -81,12 +93,13 @@ export const saveFeedbackState = (state: FeedbackState) => {
 export const getCooldownRemainingMs = (
   lastSubmittedAt: number | null,
   now: number,
+  cooldownMs = FEEDBACK_COOLDOWN_MS,
 ) => {
   if (lastSubmittedAt === null) {
     return 0
   }
 
-  return Math.max(FEEDBACK_COOLDOWN_MS - (now - lastSubmittedAt), 0)
+  return Math.max(cooldownMs - (now - lastSubmittedAt), 0)
 }
 
 export const getFeedbackPostsByCategory = (
@@ -127,6 +140,8 @@ const buildFeedbackPost = (
   createdAt: now,
   authorName: accountName ? getLeaderboardDisplayName(accountName) : 'Guest',
   accountName,
+  status: 'open',
+  pinned: false,
 })
 
 export const submitFeedbackPost = ({
@@ -144,6 +159,7 @@ export const submitFeedbackPost = ({
 }) => {
   const normalizedBody = normalizeBody(body).slice(0, MAX_FEEDBACK_BODY_LENGTH)
   const activeAccount = getActiveAccount(authState)
+  const adminState = getAdminRuntimeState()
   if (category !== 'review' && !activeAccount) {
     return {
       ok: false as const,
@@ -160,9 +176,13 @@ export const submitFeedbackPost = ({
       : category === 'feature-request'
         ? 'featureRequestAt'
         : null
+  const cooldownMs =
+    cooldownField && activeAccount?.strictFeedbackCooldownMinutes
+      ? Math.max(activeAccount.strictFeedbackCooldownMinutes, 60) * 60 * 1000
+      : FEEDBACK_COOLDOWN_MS
   const remainingMs =
     cooldownField && activeAccount
-      ? getCooldownRemainingMs(activeAccount.cooldowns[cooldownField], now)
+      ? getCooldownRemainingMs(activeAccount.cooldowns[cooldownField], now, cooldownMs)
       : 0
 
   if (cooldownField && remainingMs > 0) {
@@ -179,6 +199,39 @@ export const submitFeedbackPost = ({
     return {
       ok: false as const,
       message: getFeedbackEmptyMessage(category),
+      feedbackState,
+      authState,
+      remainingMs: 0,
+    }
+  }
+
+  const loweredBody = normalizedBody.toLowerCase()
+  if (
+    adminState.blockedWords.some(
+      (word) => word.trim().length > 0 && loweredBody.includes(word.trim().toLowerCase()),
+    )
+  ) {
+    return {
+      ok: false as const,
+      message: 'That post was blocked by the local moderation filter.',
+      feedbackState,
+      authState,
+      remainingMs: 0,
+    }
+  }
+
+  if (
+    adminState.spamProtectionEnabled &&
+    feedbackState.posts.some(
+      (post) =>
+        post.category === category &&
+        post.body.toLowerCase() === loweredBody &&
+        post.accountName === (activeAccount?.name ?? null),
+    )
+  ) {
+    return {
+      ok: false as const,
+      message: 'That looks like a duplicate post.',
       feedbackState,
       authState,
       remainingMs: 0,

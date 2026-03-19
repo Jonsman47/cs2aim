@@ -71,6 +71,15 @@ interface FeedbackColumnProps {
   onSubmit: (body: string) => boolean
 }
 
+const orderPosts = (posts: FeedbackPost[]) =>
+  [...posts].sort((left, right) => {
+    if (left.pinned !== right.pinned) {
+      return left.pinned ? -1 : 1
+    }
+
+    return right.createdAt - left.createdAt
+  })
+
 function FeedbackColumn({
   title,
   eyebrow,
@@ -128,6 +137,14 @@ function FeedbackColumn({
                 <strong>{post.authorName}</strong>
                 <span>{formatPostedAt(post.createdAt)}</span>
               </div>
+              <div className="leaderboard-name-line">
+                {post.pinned && (
+                  <span className="leaderboard-badge leaderboard-badge-outline">Pinned</span>
+                )}
+                {post.status !== 'open' && (
+                  <span className="leaderboard-badge leaderboard-badge-solid">{post.status}</span>
+                )}
+              </div>
               <p>{post.body}</p>
             </article>
           ))
@@ -160,9 +177,9 @@ export function FeedbackHub({
     }
   }, [])
 
-  const bugPosts = posts.filter((post) => post.category === 'bug-report').slice(0, 4)
-  const featurePosts = posts.filter((post) => post.category === 'feature-request').slice(0, 4)
-  const reviewPosts = posts.filter((post) => post.category === 'review').slice(0, 4)
+  const bugPosts = orderPosts(posts.filter((post) => post.category === 'bug-report')).slice(0, 4)
+  const featurePosts = orderPosts(posts.filter((post) => post.category === 'feature-request')).slice(0, 4)
+  const reviewPosts = orderPosts(posts.filter((post) => post.category === 'review')).slice(0, 4)
 
   const bugRemainingMs = getCooldownRemainingMs(availability.bugReportLastSubmittedAt, now)
   const featureRemainingMs = getCooldownRemainingMs(

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import './App.css'
 import { HotkeyHint } from './components/HotkeyHint.tsx'
 import { ShotFeedbackToast } from './components/ShotFeedbackToast.tsx'
@@ -34,6 +34,18 @@ function App() {
     snapshot,
     authMessage,
     loggedInAccountName,
+    isAdmin,
+    adminBadgeVisible,
+    adminPanel,
+    modeOptions,
+    weaponOptions,
+    leaderboardRefreshSeconds,
+    announcements,
+    bannerText,
+    featuredMessage,
+    homepageNotices,
+    lobbyMessage,
+    specialTheme,
     leaderboards,
     feedbackPosts,
     feedbackStatus,
@@ -136,7 +148,8 @@ function App() {
         settings.rawMode ? 'raw-mode' : ''
       } ${snapshot.phase === 'menu' ? 'menu-open' : ''} ${
         fullscreenActive ? 'fullscreen-active' : ''
-      }`}
+      } ${specialTheme.seasonalClass} ${specialTheme.jonsmanThemeClass}`}
+      style={{ '--accent': specialTheme.accentColor } as CSSProperties}
     >
       {!settings.rawMode && snapshot.phase !== 'menu' && (
         <aside className="sidebar">
@@ -216,10 +229,22 @@ function App() {
               loggedInAccountName={loggedInAccountName}
               xp={snapshot.xp}
               authMessage={authMessage}
-              leaderboards={leaderboards}
               feedbackPosts={feedbackPosts}
               feedbackStatus={feedbackStatus}
               feedbackAccess={feedbackAccess}
+              isAdmin={isAdmin}
+              adminBadgeVisible={adminBadgeVisible}
+              adminPanel={adminPanel}
+              modeOptions={modeOptions}
+              weaponOptions={weaponOptions}
+              leaderboardRefreshSeconds={leaderboardRefreshSeconds}
+              announcements={announcements}
+              bannerText={bannerText}
+              featuredMessage={featuredMessage}
+              homepageNotices={homepageNotices}
+              lobbyMessage={lobbyMessage}
+              specialTheme={specialTheme}
+              leaderboards={leaderboards}
               onSelectWeapon={applyWeaponSelection}
               onSelectPeek={applyPeekSelection}
               onSelectSpeed={applySpeedSelection}

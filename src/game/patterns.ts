@@ -1,3 +1,4 @@
+import { getAdminRuntimeState } from './admin.ts'
 import { formatBehaviorLabel } from './constants.ts'
 import { clamp } from './math.ts'
 import type {
@@ -280,9 +281,13 @@ const buildEnemyPlan = (
   idToken: string = role,
 ): EnemyPlan => {
   const pattern = PATTERN_LIBRARY[behavior]
+  const adminState = getAdminRuntimeState()
+  const speedMultiplier = adminState.speedConfigs[speed].multiplier
+  const difficultyMultiplier = adminState.modeConfigs[behavior].difficultyMultiplier
   const timeScale = clamp(
     (settings.difficulty.peekDuration * SPEED_TIME_SCALE[speed]) /
-      settings.difficulty.enemySpeed,
+      settings.difficulty.enemySpeed /
+      (speedMultiplier * difficultyMultiplier),
     0.58,
     2.8,
   )
@@ -359,13 +364,14 @@ const createSecondaryPlan = (
 const ROUND_START_LANE_DEPTHS = [47.05, 47.09, 47.14, 47.18] as const
 
 const getPreRoundDelayMs = (settings: GameSettings) => {
+  const adminState = getAdminRuntimeState()
   const prePeekDelayMinMs = Math.max(
-    250,
-    Math.min(settings.prePeekDelayMinMs, settings.prePeekDelayMaxMs),
+    adminState.globalPeekDelayMinMs,
+    Math.min(settings.prePeekDelayMinMs, adminState.globalPeekDelayMaxMs),
   )
   const prePeekDelayMaxMs = Math.max(
     prePeekDelayMinMs,
-    settings.prePeekDelayMaxMs,
+    Math.min(settings.prePeekDelayMaxMs, adminState.globalPeekDelayMaxMs),
   )
 
   return Math.round(randomBetween(prePeekDelayMinMs, prePeekDelayMaxMs))
@@ -412,7 +418,10 @@ const createRoundStartPlan = (
   repId: number,
   settings: GameSettings,
 ): RepPlan => {
-  const enemyCount = Math.floor(randomBetween(2, 5))
+  const adminState = getAdminRuntimeState()
+  const enemyCount = Math.floor(
+    randomBetween(adminState.roundStartMinEnemies, adminState.roundStartMaxEnemies + 1),
+  )
   const speed = settings.selectedSpeed
   const offsets = createRoundStartOffsets(enemyCount)
   const behaviors = pickRoundStartBehaviors(enemyCount)

@@ -43,6 +43,10 @@ export type GraphicsQualityId =
   | 'low'
   | 'very-low'
 
+export type BadgeStyle = 'solid' | 'outline' | 'glow'
+export type SeasonalTheme = 'off' | 'spring' | 'ember' | 'frost'
+export type PreviewVariant = 'default' | 'scan' | 'ghost' | 'warm' | 'blueprint'
+
 export type BehaviorId =
   | 'cross'
   | 'mid-hold-peek'
@@ -343,12 +347,23 @@ export interface AuthAccount {
   xp: number
   stats: AccountStats
   cooldowns: AccountSubmissionCooldowns
+  badges: string[]
+  featured: boolean
+  suspended: boolean
+  banned: boolean
+  hiddenFromLeaderboard: boolean
+  strictFeedbackCooldownMinutes: number | null
+  nameColor: string | null
+  adminNotes: string[]
 }
 
 export interface AnonymousProfile {
   id: string
   xp: number
   stats: AccountStats
+  alias: string | null
+  hiddenFromLeaderboard: boolean
+  adminNotes: string[]
 }
 
 export interface AuthState {
@@ -383,6 +398,8 @@ export interface FeedbackPost {
   createdAt: number
   authorName: string
   accountName: string | null
+  status: 'open' | 'reviewed' | 'fixed' | 'planned' | 'rejected' | 'added'
+  pinned: boolean
 }
 
 export interface FeedbackState {
@@ -410,6 +427,146 @@ export interface LeaderboardEntry {
   accountName: string | null
   value: string
   secondaryValue?: string
+  badges?: LeaderboardBadge[]
+  nameColor?: string | null
+  featured?: boolean
+  pinned?: boolean
+  admin?: boolean
+  bot?: boolean
+}
+
+export interface LeaderboardBadge {
+  id: string
+  label: string
+  color: string
+  style: BadgeStyle
+}
+
+export interface BadgeDefinition {
+  id: string
+  name: string
+  color: string
+  style: BadgeStyle
+}
+
+export interface LeaderboardBot {
+  id: string
+  name: string
+  xp: number
+  stats: AccountStats
+  locked: boolean
+  featured: boolean
+  hidden: boolean
+  nameColor: string | null
+  theme: string | null
+}
+
+export interface AdminAnnouncement {
+  id: string
+  text: string
+  tone: MessageTone
+  active: boolean
+  expiresAt: number | null
+}
+
+export interface HomepageNotice {
+  id: string
+  text: string
+  tone: MessageTone
+  active: boolean
+}
+
+export interface ModeAdminConfig {
+  enabled: boolean
+  order: number
+  popular: boolean
+  highlightColor: string
+  description: string
+  previewVariant: PreviewVariant
+  difficultyMultiplier: number
+  experimental: boolean
+}
+
+export interface ModeShell {
+  id: string
+  label: string
+  description: string
+  previewVariant: PreviewVariant
+  enabled: boolean
+}
+
+export interface WeaponAdminConfig {
+  enabled: boolean
+  cooldownMs: number
+  xpBonusMultiplier: number
+  featured: boolean
+}
+
+export interface SpeedAdminConfig {
+  multiplier: number
+  labelOverride: string | null
+}
+
+export interface AdminAuditEntry {
+  id: string
+  createdAt: number
+  actor: string
+  action: string
+  detail: string
+}
+
+export interface AdminState {
+  adminBadgeVisible: boolean
+  leaderboardAutoRefreshSeconds: number
+  announcementBannerText: string
+  featuredMessage: string
+  homepageNotices: HomepageNotice[]
+  temporaryAnnouncements: AdminAnnouncement[]
+  lobbyMessage: string
+  featuredMode: PeekSelection | null
+  featuredWeapon: WeaponMode | null
+  seasonalTheme: SeasonalTheme
+  buttonAccentColor: string
+  specialUiHighlights: boolean
+  madeByJonsmanStyle: 'default' | 'gradient' | 'glow'
+  jonsmanThemeEnabled: boolean
+  modeConfigs: Record<PeekSelection, ModeAdminConfig>
+  modeShells: ModeShell[]
+  weaponConfigs: Record<WeaponMode, WeaponAdminConfig>
+  speedConfigs: Record<PeekSpeedId, SpeedAdminConfig>
+  xpMultiplier: number
+  maxXpPerShot: number
+  levelBaseXp: number
+  levelStepXp: number
+  bonusXpEventMultiplier: number
+  modeXpBonuses: Record<PeekSelection, number>
+  weaponXpBonuses: Record<WeaponMode, number>
+  headshotScoreBonus: number
+  wallbangScoreBonus: number
+  globalPeekDelayMinMs: number
+  globalPeekDelayMaxMs: number
+  roundStartMinEnemies: number
+  roundStartMaxEnemies: number
+  defaultWallhackEnabled: boolean
+  defaultQualityPreset: GraphicsQualityId
+  experimentalModesEnabled: boolean
+  blockedWords: string[]
+  spamProtectionEnabled: boolean
+  leaderboardHighlightNames: string[]
+  leaderboardPinnedNames: string[]
+  badges: BadgeDefinition[]
+  bots: LeaderboardBot[]
+  fakeAnnouncementEnabled: boolean
+  fakeAnnouncementText: string
+  rainbowModeId: PeekSelection | null
+  upsideDownPreviewId: PeekSelection | null
+  confettiEnabled: boolean
+  goofyEventTitle: string
+  fakeGlobalChallenge: string
+  footerTrollText: string
+  jonsmanWasHereEnabled: boolean
+  auditLog: AdminAuditEntry[]
+  leaderboardRefreshNonce: number
 }
 
 export interface GameSnapshot {

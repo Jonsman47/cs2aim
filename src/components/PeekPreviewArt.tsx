@@ -3,6 +3,7 @@ import type { PeekSelection } from '../game/types.ts'
 
 interface PeekPreviewArtProps {
   peek: PeekSelection
+  className?: string
 }
 
 interface ActorProps {
@@ -290,7 +291,7 @@ const renderPeekArt = (peek: PeekSelection) => {
   }
 }
 
-export function PeekPreviewArt({ peek }: PeekPreviewArtProps) {
+export function PeekPreviewArt({ peek, className }: PeekPreviewArtProps) {
   const uniqueId = useId().replace(/:/g, '')
   const backgroundId = `peek-preview-bg-${uniqueId}`
   const floorId = `peek-preview-floor-${uniqueId}`
@@ -299,7 +300,7 @@ export function PeekPreviewArt({ peek }: PeekPreviewArtProps) {
   const showBehindDoorActor = peek === 'wallbang-timing-peek'
 
   return (
-    <div className="mode-preview" aria-hidden="true">
+    <div className={`mode-preview ${className ?? ''}`.trim()} aria-hidden="true">
       <svg
         className="mode-preview-svg"
         viewBox="0 0 240 132"

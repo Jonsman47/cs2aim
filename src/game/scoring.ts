@@ -1,3 +1,4 @@
+import { getAdminRuntimeState } from './admin.ts'
 import { BEHAVIOR_LABELS, PEEK_SPEED_LABELS, WEAPON_LABELS } from './constants.ts'
 import { clamp } from './math.ts'
 import type {
@@ -82,8 +83,9 @@ const getDifficultyScore = (
   weapon: WeaponMode,
   doorVisibilityAssist: boolean,
 ) => {
+  const adminState = getAdminRuntimeState()
   const raw =
-    BEHAVIOR_DIFFICULTY[behavior] +
+    BEHAVIOR_DIFFICULTY[behavior] * adminState.modeConfigs[behavior].difficultyMultiplier +
     SPEED_DIFFICULTY[speed] +
     WEAPON_DIFFICULTY[weapon] +
     (doorVisibilityAssist ? 0 : 4)
@@ -102,7 +104,16 @@ const getSpecialScore = (
     return 0
   }
 
-  return (headshot ? 6 : 0) + (wallbang ? (doorVisibilityAssist ? 4 : 6) : 0)
+  const adminState = getAdminRuntimeState()
+
+  return (
+    (headshot ? adminState.headshotScoreBonus : 0) +
+    (wallbang
+      ? doorVisibilityAssist
+        ? Math.max(0, adminState.wallbangScoreBonus - 2)
+        : adminState.wallbangScoreBonus
+      : 0)
+  )
 }
 
 export const evaluateAttemptScore = ({

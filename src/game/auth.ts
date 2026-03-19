@@ -1,3 +1,4 @@
+import { ADMIN_USERNAME, getAdminRuntimeState } from './admin.ts'
 import { getXpProgress } from './xp.ts'
 import type {
   AccountSubmissionCooldowns,
@@ -54,6 +55,9 @@ export const createEmptyAnonymousProfile = (): AnonymousProfile => ({
   id: createAnonymousId(),
   xp: 0,
   stats: createEmptyAccountStats(),
+  alias: null,
+  hiddenFromLeaderboard: false,
+  adminNotes: [],
 })
 
 const normalizeStats = (stats: Partial<AccountStats> | undefined): AccountStats => ({
@@ -89,6 +93,14 @@ const normalizeAnonymousProfile = (
   id: normalizeAnonymousId(profile?.id),
   xp: Number(profile?.xp) || 0,
   stats: normalizeStats(profile?.stats),
+  alias:
+    typeof profile?.alias === 'string' && profile.alias.trim() ? profile.alias : null,
+  hiddenFromLeaderboard: Boolean(profile?.hiddenFromLeaderboard),
+  adminNotes: Array.isArray(profile?.adminNotes)
+    ? profile.adminNotes.filter(
+        (note): note is string => typeof note === 'string' && note.trim().length > 0,
+      )
+    : [],
 })
 
 const hasMeaningfulProgress = ({
@@ -135,6 +147,9 @@ export const getLeaderboardDisplayName = (name: string | null | undefined) => {
 export const getAnonymousDisplayName = (id: string) =>
   `${ANONYMOUS_LEADERBOARD_NAME} ${normalizeAnonymousId(id)}`
 
+export const getAnonymousProfileDisplayName = (profile: AnonymousProfile) =>
+  sanitizeName(profile.alias ?? '') || getAnonymousDisplayName(profile.id)
+
 export const loadAuthState = (): AuthState => {
   if (typeof window === 'undefined') {
     return createEmptyAuthState()
@@ -154,6 +169,28 @@ export const loadAuthState = (): AuthState => {
           xp: Number(account.xp) || 0,
           stats: normalizeStats(account.stats),
           cooldowns: normalizeCooldowns(account.cooldowns),
+          badges: Array.isArray(account.badges)
+            ? account.badges.filter(
+                (badge): badge is string => typeof badge === 'string' && badge.trim().length > 0,
+              )
+            : [],
+          featured: Boolean(account.featured),
+          suspended: Boolean(account.suspended),
+          banned: Boolean(account.banned),
+          hiddenFromLeaderboard: Boolean(account.hiddenFromLeaderboard),
+          strictFeedbackCooldownMinutes:
+            typeof account.strictFeedbackCooldownMinutes === 'number'
+              ? account.strictFeedbackCooldownMinutes
+              : null,
+          nameColor:
+            typeof account.nameColor === 'string' && account.nameColor.trim()
+              ? account.nameColor
+              : null,
+          adminNotes: Array.isArray(account.adminNotes)
+            ? account.adminNotes.filter(
+                (note): note is string => typeof note === 'string' && note.trim().length > 0,
+              )
+            : [],
         }))
       : []
     const activeUserName =
@@ -196,7 +233,7 @@ export const getProgressionProfile = (state: AuthState) => {
   }
 
   return {
-    displayName: getAnonymousDisplayName(state.anonymousProfile.id),
+    displayName: getAnonymousProfileDisplayName(state.anonymousProfile),
     xp: state.anonymousProfile.xp,
     loggedInAccountName: null,
     isAnonymous: true as const,
@@ -240,6 +277,14 @@ export const registerAccount = (
           ? normalizeStats(state.anonymousProfile.stats)
           : createEmptyAccountStats(),
         cooldowns: createEmptyAccountSubmissionCooldowns(),
+        badges: [],
+        featured: false,
+        suspended: false,
+        banned: false,
+        hiddenFromLeaderboard: false,
+        strictFeedbackCooldownMinutes: null,
+        nameColor: null,
+        adminNotes: [],
       },
     ],
     activeUserName: normalizedName,
@@ -277,6 +322,22 @@ export const loginAccount = (
     return {
       ok: false as const,
       message: 'Wrong password.',
+      state,
+    }
+  }
+
+  if (state.accounts[index].banned) {
+    return {
+      ok: false as const,
+      message: 'That account is banned from this local system.',
+      state,
+    }
+  }
+
+  if (state.accounts[index].suspended) {
+    return {
+      ok: false as const,
+      message: 'That account is suspended right now.',
       state,
     }
   }
@@ -499,6 +560,12 @@ interface LeaderboardRowCandidate {
   accountName: string | null
   xp: number
   stats: AccountStats
+  badges?: LeaderboardEntry['badges']
+  nameColor?: string | null
+  featured?: boolean
+  pinned?: boolean
+  admin?: boolean
+  bot?: boolean
 }
 
 const buildLeaderboardRow = (
@@ -521,6 +588,12 @@ const buildLeaderboardRow = (
         sortSecondary: candidate.xp,
         ascending: false,
         empty: false,
+        badges: candidate.badges,
+        nameColor: candidate.nameColor,
+        featured: candidate.featured,
+        pinned: candidate.pinned,
+        admin: candidate.admin,
+        bot: candidate.bot,
       }
     case 'xp':
       return {
@@ -532,6 +605,12 @@ const buildLeaderboardRow = (
         sortSecondary: level,
         ascending: false,
         empty: false,
+        badges: candidate.badges,
+        nameColor: candidate.nameColor,
+        featured: candidate.featured,
+        pinned: candidate.pinned,
+        admin: candidate.admin,
+        bot: candidate.bot,
       }
     case 'kills':
       return {
@@ -543,6 +622,12 @@ const buildLeaderboardRow = (
         sortSecondary: candidate.stats.headshots,
         ascending: false,
         empty: false,
+        badges: candidate.badges,
+        nameColor: candidate.nameColor,
+        featured: candidate.featured,
+        pinned: candidate.pinned,
+        admin: candidate.admin,
+        bot: candidate.bot,
       }
     case 'average-reaction':
       return {
@@ -554,6 +639,12 @@ const buildLeaderboardRow = (
         sortSecondary: candidate.stats.qualifyingReactionCount,
         ascending: true,
         empty: averageReaction === null,
+        badges: candidate.badges,
+        nameColor: candidate.nameColor,
+        featured: candidate.featured,
+        pinned: candidate.pinned,
+        admin: candidate.admin,
+        bot: candidate.bot,
       }
     case 'headshots':
       return {
@@ -565,6 +656,12 @@ const buildLeaderboardRow = (
         sortSecondary: candidate.stats.kills,
         ascending: false,
         empty: false,
+        badges: candidate.badges,
+        nameColor: candidate.nameColor,
+        featured: candidate.featured,
+        pinned: candidate.pinned,
+        admin: candidate.admin,
+        bot: candidate.bot,
       }
     case 'wallbangs':
       return {
@@ -576,6 +673,12 @@ const buildLeaderboardRow = (
         sortSecondary: candidate.stats.kills,
         ascending: false,
         empty: false,
+        badges: candidate.badges,
+        nameColor: candidate.nameColor,
+        featured: candidate.featured,
+        pinned: candidate.pinned,
+        admin: candidate.admin,
+        bot: candidate.bot,
       }
     case 'best-score':
       return {
@@ -587,6 +690,12 @@ const buildLeaderboardRow = (
         sortSecondary: candidate.stats.kills,
         ascending: false,
         empty: candidate.stats.bestScore <= 0,
+        badges: candidate.badges,
+        nameColor: candidate.nameColor,
+        featured: candidate.featured,
+        pinned: candidate.pinned,
+        admin: candidate.admin,
+        bot: candidate.bot,
       }
     case 'accuracy':
       return {
@@ -598,6 +707,12 @@ const buildLeaderboardRow = (
         sortSecondary: candidate.stats.kills,
         ascending: false,
         empty: accuracy === null,
+        badges: candidate.badges,
+        nameColor: candidate.nameColor,
+        featured: candidate.featured,
+        pinned: candidate.pinned,
+        admin: candidate.admin,
+        bot: candidate.bot,
       }
     case 'fastest-reaction':
     default:
@@ -610,6 +725,12 @@ const buildLeaderboardRow = (
         sortSecondary: candidate.stats.kills,
         ascending: true,
         empty: candidate.stats.fastestReactionMs === null,
+        badges: candidate.badges,
+        nameColor: candidate.nameColor,
+        featured: candidate.featured,
+        pinned: candidate.pinned,
+        admin: candidate.admin,
+        bot: candidate.bot,
       }
   }
 }
@@ -618,19 +739,98 @@ export const getLeaderboardEntries = (
   state: AuthState,
   category: LeaderboardCategory,
 ): LeaderboardEntry[] => {
-  const candidates: LeaderboardRowCandidate[] = state.accounts.map((account) => ({
-    name: getLeaderboardDisplayName(account.name),
-    accountName: sanitizeName(account.name).length > 0 ? account.name : null,
-    xp: account.xp,
-    stats: account.stats,
-  }))
+  const adminState = getAdminRuntimeState()
+  const badgeDefinitions = Object.fromEntries(
+    adminState.badges.map((badge) => [badge.id, badge]),
+  )
+  const pinnedNames = new Set(
+    adminState.leaderboardPinnedNames.map((name) => name.trim().toLowerCase()),
+  )
+  const highlightedNames = new Set(
+    adminState.leaderboardHighlightNames.map((name) => name.trim().toLowerCase()),
+  )
+  const candidates: LeaderboardRowCandidate[] = state.accounts
+    .filter((account) => !account.hiddenFromLeaderboard)
+    .map((account) => {
+      const normalizedName = sanitizeName(account.name)
+      const isAdmin = normalizedName === ADMIN_USERNAME
+      const displayBadges =
+        [
+          ...account.badges
+            .map((badgeId) => badgeDefinitions[badgeId])
+            .filter(Boolean)
+            .map((badge) => ({
+              id: badge.id,
+              label: badge.name,
+              color: badge.color,
+              style: badge.style,
+            })),
+          ...(isAdmin && adminState.adminBadgeVisible
+            ? [
+                {
+                  id: 'admin',
+                  label: 'Admin',
+                  color: '#c15cff',
+                  style: 'glow' as const,
+                },
+              ]
+            : []),
+        ].filter(
+          (badge, index, list) => list.findIndex((item) => item.id === badge.id) === index,
+        )
 
-  if (hasMeaningfulProgress(state.anonymousProfile)) {
+      return {
+        name: getLeaderboardDisplayName(account.name),
+        accountName: normalizedName.length > 0 ? account.name : null,
+        xp: account.xp,
+        stats: account.stats,
+        badges: displayBadges,
+        nameColor: account.nameColor,
+        featured:
+          account.featured || highlightedNames.has(normalizedName.toLowerCase()),
+        pinned:
+          account.featured || pinnedNames.has(normalizedName.toLowerCase()),
+        admin: isAdmin,
+        bot: false,
+      }
+    })
+
+  if (hasMeaningfulProgress(state.anonymousProfile) && !state.anonymousProfile.hiddenFromLeaderboard) {
     candidates.push({
-      name: getAnonymousDisplayName(state.anonymousProfile.id),
+      name: getAnonymousProfileDisplayName(state.anonymousProfile),
       accountName: null,
       xp: state.anonymousProfile.xp,
       stats: state.anonymousProfile.stats,
+      featured: false,
+      pinned: false,
+      admin: false,
+      bot: false,
+    })
+  }
+
+  for (const bot of adminState.bots) {
+    if (bot.hidden) {
+      continue
+    }
+
+    candidates.push({
+      name: bot.name,
+      accountName: null,
+      xp: bot.xp,
+      stats: bot.stats,
+      badges: [
+        {
+          id: 'bot',
+          label: bot.theme ? `${bot.theme} Bot` : 'Bot',
+          color: '#7cb8ff',
+          style: 'outline',
+        },
+      ],
+      nameColor: bot.nameColor,
+      featured: bot.featured,
+      pinned: bot.featured,
+      admin: false,
+      bot: true,
     })
   }
 
@@ -639,6 +839,10 @@ export const getLeaderboardEntries = (
   const ascending = rows[0]?.ascending ?? false
   const rankedRows = rows
     .sort((left, right) => {
+      if (left.pinned !== right.pinned) {
+        return left.pinned ? -1 : 1
+      }
+
       if (left.empty !== right.empty) {
         return left.empty ? 1 : -1
       }
@@ -657,10 +861,16 @@ export const getLeaderboardEntries = (
   return (category === 'average-reaction'
     ? rankedRows.filter((row) => !row.empty)
     : rankedRows)
-    .map(({ name, accountName, value, secondaryValue }) => ({
+    .map(({ name, accountName, value, secondaryValue, badges, nameColor, featured, pinned, admin, bot }) => ({
       name,
       accountName,
       value,
       secondaryValue,
+      badges,
+      nameColor,
+      featured,
+      pinned,
+      admin,
+      bot,
     }))
 }
