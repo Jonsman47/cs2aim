@@ -11,6 +11,7 @@ import {
   LEADERBOARD_CATEGORIES,
   getActiveAccount,
   getLeaderboardEntries,
+  getProgressionProfile,
   loadAuthState,
   loginAccount,
   logoutAccount,
@@ -53,11 +54,11 @@ const createInitialRuntime = () => {
     loadedState.history,
     loadedState.lifetime,
   )
-  const initialAccount = getActiveAccount(loadedAuthState)
+  const initialProfile = getProgressionProfile(loadedAuthState)
   setAccountSession(
     runtime,
-    initialAccount?.name ?? null,
-    initialAccount?.xp ?? 0,
+    initialProfile.displayName,
+    initialProfile.xp,
   )
   return runtime
 }
@@ -99,6 +100,7 @@ export const useReactionTrainer = () => {
   const [snapshot, setSnapshot] = useState(() => getSnapshot(runtimeRef.current))
   const lastProgressSnapshotRef = useRef(getSnapshot(runtimeRef.current))
   const activeAccount = getActiveAccount(authState)
+  const progressionProfile = getProgressionProfile(authState)
 
   const leaderboards = LEADERBOARD_CATEGORIES.map((category) => ({
     ...category,
@@ -167,11 +169,11 @@ export const useReactionTrainer = () => {
   }, [])
 
   useEffect(() => {
-    const activeAccount = getActiveAccount(authState)
+    const nextProfile = getProgressionProfile(authState)
     setAccountSession(
       runtimeRef.current,
-      activeAccount?.name ?? null,
-      activeAccount?.xp ?? 0,
+      nextProfile.displayName,
+      nextProfile.xp,
     )
     lastProgressSnapshotRef.current = getSnapshot(runtimeRef.current)
     syncSnapshot()
@@ -182,10 +184,6 @@ export const useReactionTrainer = () => {
     const currentSnapshot = getSnapshot(runtime)
     const previousSnapshot = lastProgressSnapshotRef.current
     lastProgressSnapshotRef.current = currentSnapshot
-
-    if (!runtime.accountName) {
-      return
-    }
 
     const shotsDelta =
       Math.max(currentSnapshot.stats.hits - previousSnapshot.stats.hits, 0) +
@@ -215,7 +213,7 @@ export const useReactionTrainer = () => {
     const score = killsDelta > 0 ? currentSnapshot.lastResult?.score ?? null : null
 
     setAuthState((current) =>
-      updateAccountProgress(current, runtime.accountName, {
+      updateAccountProgress(current, getActiveAccount(current)?.name ?? null, {
         xp: runtime.accountXp,
         shotsDelta,
         killsDelta,
@@ -352,12 +350,12 @@ export const useReactionTrainer = () => {
   }
 
   const applyAuthUpdate = (nextState: AuthState, message: string | null) => {
-    const activeAccount = getActiveAccount(nextState)
+    const nextProfile = getProgressionProfile(nextState)
     setAuthState(nextState)
     setAccountSession(
       runtimeRef.current,
-      activeAccount?.name ?? null,
-      activeAccount?.xp ?? 0,
+      nextProfile.displayName,
+      nextProfile.xp,
     )
     setAuthMessage(message)
     syncSnapshot()
@@ -374,7 +372,10 @@ export const useReactionTrainer = () => {
   }
 
   const logout = () => {
-    applyAuthUpdate(logoutAccount(authState), 'Logged out. XP progression is paused.')
+    applyAuthUpdate(
+      logoutAccount(authState),
+      'Logged out. Local anonymous progression is active on this device.',
+    )
   }
 
   const submitBugReport = (body: string) => {
@@ -528,6 +529,7 @@ export const useReactionTrainer = () => {
     settings,
     snapshot,
     authMessage,
+    loggedInAccountName: progressionProfile.loggedInAccountName,
     leaderboards,
     feedbackPosts: feedbackState.posts,
     feedbackStatus,

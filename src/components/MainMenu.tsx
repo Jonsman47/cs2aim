@@ -38,6 +38,7 @@ interface MainMenuProps {
   favoriteWeapon: WeaponMode
   averageShotTimeMs: number | null
   accountName: string | null
+  loggedInAccountName: string | null
   xp: XpProgress | null
   authMessage: string | null
   feedbackPosts: FeedbackPost[]
@@ -81,6 +82,7 @@ export function MainMenu({
   favoriteWeapon,
   averageShotTimeMs,
   accountName,
+  loggedInAccountName,
   xp,
   authMessage,
   feedbackPosts,
@@ -152,7 +154,7 @@ export function MainMenu({
   }, [activeTab, onStartSelected])
 
   const renderAccountSettings = () => {
-    if (accountName && xp) {
+    if (loggedInAccountName && xp) {
       return (
         <section className="panel">
           {authMessage && <p className="auth-status">{authMessage}</p>}
@@ -165,7 +167,7 @@ export function MainMenu({
           <div className="menu-meta account-meta">
             <div>
               <span>Logged In As</span>
-              <strong>{accountName}</strong>
+              <strong>{loggedInAccountName}</strong>
             </div>
             <div>
               <span>Level</span>
@@ -259,6 +261,44 @@ export function MainMenu({
             </form>
           </section>
         </div>
+
+        {accountName && xp && (
+          <section className="panel">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">Local Profile</p>
+                <h2>Anonymous Progression</h2>
+              </div>
+            </div>
+            <p className="menu-copy">
+              Anonymous play still saves XP, level, and combat stats on this device. If you
+              register from this profile, that progression transfers into the new account
+              automatically.
+            </p>
+            <div className="menu-meta account-meta">
+              <div>
+                <span>Local Name</span>
+                <strong>{accountName}</strong>
+              </div>
+              <div>
+                <span>Level</span>
+                <strong>Level {xp.level}</strong>
+              </div>
+              <div>
+                <span>Progress To Next Level</span>
+                <strong>{formatLevelProgress(xp)}</strong>
+              </div>
+            </div>
+            <div className="level-strip">
+              <div className="level-strip-bar">
+                <div
+                  className="level-strip-fill"
+                  style={{ width: `${Math.max(xp.progress, 0.02) * 100}%` }}
+                />
+              </div>
+            </div>
+          </section>
+        )}
       </>
     )
   }
@@ -322,11 +362,13 @@ export function MainMenu({
                 <span>Progression</span>
                 {accountName && xp ? (
                   <div className="progress-readout">
-                    <strong>Level {xp.level}</strong>
-                    <span className="progress-readout-detail">{formatLevelProgress(xp)}</span>
+                    <strong>{accountName}</strong>
+                    <span className="progress-readout-detail">
+                      Level {xp.level} / {formatLevelProgress(xp)}
+                    </span>
                   </div>
                 ) : (
-                  <strong>Open Settings &gt; Account to bank XP</strong>
+                  <strong>Progression unavailable</strong>
                 )}
               </div>
               <div>
@@ -416,7 +458,7 @@ export function MainMenu({
             </div>
 
             <FeedbackHub
-              accountName={accountName}
+              accountName={loggedInAccountName}
               posts={feedbackPosts}
               status={feedbackStatus}
               availability={feedbackAccess}
@@ -485,8 +527,8 @@ export function MainMenu({
               {(leaderboards.find((category) => category.id === activeLeaderboard)?.entries.length ??
                 0) === 0 && (
                 <p className="empty-copy">
-                  No registered players yet. Create an account and start landing shots to populate
-                  the boards.
+                  No saved players yet. Play anonymously or create an account to populate the
+                  boards.
                 </p>
               )}
             </div>

@@ -2,6 +2,7 @@ import { getXpProgress } from './xp.ts'
 import type {
   AccountSubmissionCooldowns,
   AccountStats,
+  AnonymousProfile,
   AuthAccount,
   AuthState,
   LeaderboardCategory,
@@ -11,8 +12,21 @@ import type {
 
 const AUTH_STORAGE_KEY = 'midlane-reaction-auth'
 export const ANONYMOUS_LEADERBOARD_NAME = 'Anonymous'
+const ANONYMOUS_ID_LENGTH = 3
 
 const sanitizeName = (value: string) => value.trim()
+const createAnonymousId = () =>
+  Math.floor(Math.random() * 10 ** ANONYMOUS_ID_LENGTH)
+    .toString()
+    .padStart(ANONYMOUS_ID_LENGTH, '0')
+const normalizeAnonymousId = (value: unknown) => {
+  const digits =
+    typeof value === 'string'
+      ? value.replace(/\D/g, '').slice(-ANONYMOUS_ID_LENGTH)
+      : ''
+
+  return digits ? digits.padStart(ANONYMOUS_ID_LENGTH, '0') : createAnonymousId()
+}
 
 const findAccountIndex = (accounts: AuthAccount[], name: string) =>
   accounts.findIndex(
@@ -34,6 +48,12 @@ export const createEmptyAccountStats = (): AccountStats => ({
 export const createEmptyAccountSubmissionCooldowns = (): AccountSubmissionCooldowns => ({
   bugReportAt: null,
   featureRequestAt: null,
+})
+
+export const createEmptyAnonymousProfile = (): AnonymousProfile => ({
+  id: createAnonymousId(),
+  xp: 0,
+  stats: createEmptyAccountStats(),
 })
 
 const normalizeStats = (stats: Partial<AccountStats> | undefined): AccountStats => ({
@@ -63,6 +83,32 @@ const normalizeCooldowns = (
       : null,
 })
 
+const normalizeAnonymousProfile = (
+  profile: Partial<AnonymousProfile> | undefined,
+): AnonymousProfile => ({
+  id: normalizeAnonymousId(profile?.id),
+  xp: Number(profile?.xp) || 0,
+  stats: normalizeStats(profile?.stats),
+})
+
+const hasMeaningfulProgress = ({
+  xp,
+  stats,
+}: {
+  xp: number
+  stats: AccountStats
+}) =>
+  xp > 0 ||
+  stats.shots > 0 ||
+  stats.kills > 0 ||
+  stats.headshots > 0 ||
+  stats.wallbangs > 0 ||
+  stats.cumulativeReactionMs > 0 ||
+  stats.qualifyingReactionMs > 0 ||
+  stats.qualifyingReactionCount > 0 ||
+  stats.fastestReactionMs !== null ||
+  stats.bestScore > 0
+
 export const LEADERBOARD_CATEGORIES: LeaderboardCategoryOption[] = [
   { id: 'level', label: 'Highest Level' },
   { id: 'xp', label: 'Highest XP' },
@@ -78,12 +124,16 @@ export const LEADERBOARD_CATEGORIES: LeaderboardCategoryOption[] = [
 export const createEmptyAuthState = (): AuthState => ({
   accounts: [],
   activeUserName: null,
+  anonymousProfile: createEmptyAnonymousProfile(),
 })
 
 export const getLeaderboardDisplayName = (name: string | null | undefined) => {
   const normalizedName = typeof name === 'string' ? sanitizeName(name) : ''
   return normalizedName || ANONYMOUS_LEADERBOARD_NAME
 }
+
+export const getAnonymousDisplayName = (id: string) =>
+  `${ANONYMOUS_LEADERBOARD_NAME} ${normalizeAnonymousId(id)}`
 
 export const loadAuthState = (): AuthState => {
   if (typeof window === 'undefined') {
@@ -97,18 +147,25 @@ export const loadAuthState = (): AuthState => {
     }
 
     const parsed = JSON.parse(raw) as Partial<AuthState>
+    const accounts = Array.isArray(parsed.accounts)
+      ? parsed.accounts.map((account) => ({
+          name: typeof account.name === 'string' ? account.name : '',
+          password: typeof account.password === 'string' ? account.password : '',
+          xp: Number(account.xp) || 0,
+          stats: normalizeStats(account.stats),
+          cooldowns: normalizeCooldowns(account.cooldowns),
+        }))
+      : []
+    const activeUserName =
+      typeof parsed.activeUserName === 'string' &&
+      accounts.some((account) => account.name === parsed.activeUserName)
+        ? parsed.activeUserName
+        : null
+
     return {
-      accounts: Array.isArray(parsed.accounts)
-        ? parsed.accounts.map((account) => ({
-            name: typeof account.name === 'string' ? account.name : '',
-            password: typeof account.password === 'string' ? account.password : '',
-            xp: Number(account.xp) || 0,
-            stats: normalizeStats(account.stats),
-            cooldowns: normalizeCooldowns(account.cooldowns),
-          }))
-        : [],
-      activeUserName:
-        typeof parsed.activeUserName === 'string' ? parsed.activeUserName : null,
+      accounts,
+      activeUserName,
+      anonymousProfile: normalizeAnonymousProfile(parsed.anonymousProfile),
     }
   } catch {
     return createEmptyAuthState()
@@ -125,6 +182,26 @@ export const saveAuthState = (state: AuthState) => {
 
 export const getActiveAccount = (state: AuthState) =>
   state.accounts.find((account) => account.name === state.activeUserName) ?? null
+
+export const getProgressionProfile = (state: AuthState) => {
+  const activeAccount = getActiveAccount(state)
+
+  if (activeAccount) {
+    return {
+      displayName: getLeaderboardDisplayName(activeAccount.name),
+      xp: activeAccount.xp,
+      loggedInAccountName: activeAccount.name,
+      isAnonymous: false as const,
+    }
+  }
+
+  return {
+    displayName: getAnonymousDisplayName(state.anonymousProfile.id),
+    xp: state.anonymousProfile.xp,
+    loggedInAccountName: null,
+    isAnonymous: true as const,
+  }
+}
 
 export const registerAccount = (
   state: AuthState,
@@ -150,23 +227,32 @@ export const registerAccount = (
     }
   }
 
+  const transferringAnonymousProgress =
+    state.activeUserName === null && hasMeaningfulProgress(state.anonymousProfile)
   const nextState: AuthState = {
     accounts: [
       ...state.accounts,
-        {
-          name: normalizedName,
-          password: normalizedPassword,
-          xp: 0,
-          stats: createEmptyAccountStats(),
-          cooldowns: createEmptyAccountSubmissionCooldowns(),
-        },
-      ],
-      activeUserName: normalizedName,
+      {
+        name: normalizedName,
+        password: normalizedPassword,
+        xp: transferringAnonymousProgress ? state.anonymousProfile.xp : 0,
+        stats: transferringAnonymousProgress
+          ? normalizeStats(state.anonymousProfile.stats)
+          : createEmptyAccountStats(),
+        cooldowns: createEmptyAccountSubmissionCooldowns(),
+      },
+    ],
+    activeUserName: normalizedName,
+    anonymousProfile: transferringAnonymousProgress
+      ? createEmptyAnonymousProfile()
+      : state.anonymousProfile,
   }
 
   return {
     ok: true as const,
-    message: `Logged in as ${normalizedName}.`,
+    message: transferringAnonymousProgress
+      ? `Logged in as ${normalizedName}. Anonymous progression transferred into the new account.`
+      : `Logged in as ${normalizedName}. New account ready.`,
     state: nextState,
   }
 }
@@ -197,7 +283,7 @@ export const loginAccount = (
 
   return {
     ok: true as const,
-    message: `Logged in as ${state.accounts[index].name}.`,
+    message: `Logged in as ${state.accounts[index].name}. Using saved account progression.`,
     state: {
       ...state,
       activeUserName: state.accounts[index].name,
@@ -216,7 +302,17 @@ export const updateAccountXp = (
   xp: number,
 ): AuthState => {
   if (!userName) {
-    return state
+    if (state.anonymousProfile.xp === xp) {
+      return state
+    }
+
+    return {
+      ...state,
+      anonymousProfile: {
+        ...state.anonymousProfile,
+        xp,
+      },
+    }
   }
 
   const index = findAccountIndex(state.accounts, userName)
@@ -282,15 +378,6 @@ export const updateAccountProgress = (
   userName: string | null,
   update: AccountProgressUpdate,
 ): AuthState => {
-  if (!userName) {
-    return state
-  }
-
-  const index = findAccountIndex(state.accounts, userName)
-  if (index < 0) {
-    return state
-  }
-
   const normalizedReactionTimes =
     update.reactionTimes?.filter(
       (reactionTime): reactionTime is number =>
@@ -304,20 +391,60 @@ export const updateAccountProgress = (
   )
   const fastestReaction =
     normalizedReactionTimes.length > 0 ? Math.min(...normalizedReactionTimes) : null
-
-  const current = state.accounts[index]
-  if (
-    current.xp === Math.max(0, Math.round(update.xp)) &&
+  const nextXp = Math.max(0, Math.round(update.xp))
+  const hasNoMeaningfulChange =
     update.shotsDelta <= 0 &&
     update.killsDelta <= 0 &&
     update.headshotsDelta <= 0 &&
     update.wallbangsDelta <= 0 &&
     normalizedReactionTimes.length === 0 &&
     (update.score === null || update.score === undefined)
-  ) {
+
+  if (!userName) {
+    const current = state.anonymousProfile
+    if (current.xp === nextXp && hasNoMeaningfulChange) {
+      return state
+    }
+
+    return {
+      ...state,
+      anonymousProfile: {
+        ...current,
+        xp: nextXp,
+        stats: {
+          shots: current.stats.shots + Math.max(update.shotsDelta, 0),
+          kills: current.stats.kills + Math.max(update.killsDelta, 0),
+          headshots: current.stats.headshots + Math.max(update.headshotsDelta, 0),
+          wallbangs: current.stats.wallbangs + Math.max(update.wallbangsDelta, 0),
+          cumulativeReactionMs:
+            current.stats.cumulativeReactionMs +
+            normalizedReactionTimes.reduce((total, reactionTime) => total + reactionTime, 0),
+          qualifyingReactionMs:
+            current.stats.qualifyingReactionMs +
+            qualifyingReactionTimes.reduce((total, reactionTime) => total + reactionTime, 0),
+          qualifyingReactionCount:
+            current.stats.qualifyingReactionCount + qualifyingReactionTimes.length,
+          fastestReactionMs:
+            fastestReaction === null
+              ? current.stats.fastestReactionMs
+              : current.stats.fastestReactionMs === null
+                ? fastestReaction
+                : Math.min(current.stats.fastestReactionMs, fastestReaction),
+          bestScore: Math.max(current.stats.bestScore, update.score ?? 0),
+        },
+      },
+    }
+  }
+
+  const index = findAccountIndex(state.accounts, userName)
+  if (index < 0) {
     return state
   }
 
+  const current = state.accounts[index]
+  if (current.xp === nextXp && hasNoMeaningfulChange) {
+    return state
+  }
   const nextStats: AccountStats = {
     shots: current.stats.shots + Math.max(update.shotsDelta, 0),
     kills: current.stats.kills + Math.max(update.killsDelta, 0),
@@ -343,7 +470,7 @@ export const updateAccountProgress = (
   const accounts = [...state.accounts]
   accounts[index] = {
     ...current,
-    xp: Math.max(0, Math.round(update.xp)),
+    xp: nextXp,
     stats: nextStats,
   }
 
@@ -367,120 +494,147 @@ const getAverageReaction = (stats: AccountStats) =>
     ? stats.qualifyingReactionMs / stats.qualifyingReactionCount
     : null
 
+interface LeaderboardRowCandidate {
+  name: string
+  accountName: string | null
+  xp: number
+  stats: AccountStats
+}
+
+const buildLeaderboardRow = (
+  candidate: LeaderboardRowCandidate,
+  category: LeaderboardCategory,
+) => {
+  const level = getXpProgress(candidate.xp).level
+  const averageReaction = getAverageReaction(candidate.stats)
+  const accuracy =
+    candidate.stats.shots > 0 ? (candidate.stats.kills / candidate.stats.shots) * 100 : null
+
+  switch (category) {
+    case 'level':
+      return {
+        name: candidate.name,
+        accountName: candidate.accountName,
+        value: `Level ${level}`,
+        secondaryValue: `${candidate.xp.toLocaleString()} XP`,
+        sortPrimary: level,
+        sortSecondary: candidate.xp,
+        ascending: false,
+        empty: false,
+      }
+    case 'xp':
+      return {
+        name: candidate.name,
+        accountName: candidate.accountName,
+        value: `${candidate.xp.toLocaleString()} XP`,
+        secondaryValue: `Level ${level}`,
+        sortPrimary: candidate.xp,
+        sortSecondary: level,
+        ascending: false,
+        empty: false,
+      }
+    case 'kills':
+      return {
+        name: candidate.name,
+        accountName: candidate.accountName,
+        value: `${candidate.stats.kills.toLocaleString()} kills`,
+        secondaryValue: formatAccuracy(candidate.stats.shots, candidate.stats.kills),
+        sortPrimary: candidate.stats.kills,
+        sortSecondary: candidate.stats.headshots,
+        ascending: false,
+        empty: false,
+      }
+    case 'average-reaction':
+      return {
+        name: candidate.name,
+        accountName: candidate.accountName,
+        value: formatMs(averageReaction),
+        secondaryValue: `${candidate.stats.qualifyingReactionCount.toLocaleString()} qualifying shots`,
+        sortPrimary: averageReaction ?? Number.POSITIVE_INFINITY,
+        sortSecondary: candidate.stats.qualifyingReactionCount,
+        ascending: true,
+        empty: averageReaction === null,
+      }
+    case 'headshots':
+      return {
+        name: candidate.name,
+        accountName: candidate.accountName,
+        value: `${candidate.stats.headshots.toLocaleString()} headshots`,
+        secondaryValue: `${candidate.stats.kills.toLocaleString()} kills`,
+        sortPrimary: candidate.stats.headshots,
+        sortSecondary: candidate.stats.kills,
+        ascending: false,
+        empty: false,
+      }
+    case 'wallbangs':
+      return {
+        name: candidate.name,
+        accountName: candidate.accountName,
+        value: `${candidate.stats.wallbangs.toLocaleString()} wallbangs`,
+        secondaryValue: `${candidate.stats.kills.toLocaleString()} kills`,
+        sortPrimary: candidate.stats.wallbangs,
+        sortSecondary: candidate.stats.kills,
+        ascending: false,
+        empty: false,
+      }
+    case 'best-score':
+      return {
+        name: candidate.name,
+        accountName: candidate.accountName,
+        value: formatScore(candidate.stats.bestScore),
+        secondaryValue: `${candidate.stats.kills.toLocaleString()} kills`,
+        sortPrimary: candidate.stats.bestScore,
+        sortSecondary: candidate.stats.kills,
+        ascending: false,
+        empty: candidate.stats.bestScore <= 0,
+      }
+    case 'accuracy':
+      return {
+        name: candidate.name,
+        accountName: candidate.accountName,
+        value: formatAccuracy(candidate.stats.shots, candidate.stats.kills),
+        secondaryValue: `${candidate.stats.kills.toLocaleString()} / ${candidate.stats.shots.toLocaleString()} shots`,
+        sortPrimary: accuracy ?? Number.NEGATIVE_INFINITY,
+        sortSecondary: candidate.stats.kills,
+        ascending: false,
+        empty: accuracy === null,
+      }
+    case 'fastest-reaction':
+    default:
+      return {
+        name: candidate.name,
+        accountName: candidate.accountName,
+        value: formatMs(candidate.stats.fastestReactionMs),
+        secondaryValue: `${candidate.stats.headshots.toLocaleString()} headshots`,
+        sortPrimary: candidate.stats.fastestReactionMs ?? Number.POSITIVE_INFINITY,
+        sortSecondary: candidate.stats.kills,
+        ascending: true,
+        empty: candidate.stats.fastestReactionMs === null,
+      }
+  }
+}
+
 export const getLeaderboardEntries = (
   state: AuthState,
   category: LeaderboardCategory,
 ): LeaderboardEntry[] => {
-  const rows = state.accounts.map((account) => {
-    const displayName = getLeaderboardDisplayName(account.name)
-    const hasAccountIdentity = sanitizeName(account.name).length > 0
-    const level = getXpProgress(account.xp).level
-    const averageReaction = getAverageReaction(account.stats)
-    const accuracy = account.stats.shots > 0 ? (account.stats.kills / account.stats.shots) * 100 : null
+  const candidates: LeaderboardRowCandidate[] = state.accounts.map((account) => ({
+    name: getLeaderboardDisplayName(account.name),
+    accountName: sanitizeName(account.name).length > 0 ? account.name : null,
+    xp: account.xp,
+    stats: account.stats,
+  }))
 
-    switch (category) {
-      case 'level':
-        return {
-          name: displayName,
-          accountName: hasAccountIdentity ? account.name : null,
-          value: `Level ${level}`,
-          secondaryValue: `${account.xp.toLocaleString()} XP`,
-          sortPrimary: level,
-          sortSecondary: account.xp,
-          ascending: false,
-          empty: false,
-        }
-      case 'xp':
-        return {
-          name: displayName,
-          accountName: hasAccountIdentity ? account.name : null,
-          value: `${account.xp.toLocaleString()} XP`,
-          secondaryValue: `Level ${level}`,
-          sortPrimary: account.xp,
-          sortSecondary: level,
-          ascending: false,
-          empty: false,
-        }
-      case 'kills':
-        return {
-          name: displayName,
-          accountName: hasAccountIdentity ? account.name : null,
-          value: `${account.stats.kills.toLocaleString()} kills`,
-          secondaryValue: formatAccuracy(account.stats.shots, account.stats.kills),
-          sortPrimary: account.stats.kills,
-          sortSecondary: account.stats.headshots,
-          ascending: false,
-          empty: false,
-        }
-      case 'average-reaction':
-        return {
-          name: displayName,
-          accountName: hasAccountIdentity ? account.name : null,
-          value: formatMs(averageReaction),
-          secondaryValue: `${account.stats.qualifyingReactionCount.toLocaleString()} qualifying shots`,
-          sortPrimary: averageReaction ?? Number.POSITIVE_INFINITY,
-          sortSecondary: account.stats.qualifyingReactionCount,
-          ascending: true,
-          empty: averageReaction === null,
-        }
-      case 'headshots':
-        return {
-          name: displayName,
-          accountName: hasAccountIdentity ? account.name : null,
-          value: `${account.stats.headshots.toLocaleString()} headshots`,
-          secondaryValue: `${account.stats.kills.toLocaleString()} kills`,
-          sortPrimary: account.stats.headshots,
-          sortSecondary: account.stats.kills,
-          ascending: false,
-          empty: false,
-        }
-      case 'wallbangs':
-        return {
-          name: displayName,
-          accountName: hasAccountIdentity ? account.name : null,
-          value: `${account.stats.wallbangs.toLocaleString()} wallbangs`,
-          secondaryValue: `${account.stats.kills.toLocaleString()} kills`,
-          sortPrimary: account.stats.wallbangs,
-          sortSecondary: account.stats.kills,
-          ascending: false,
-          empty: false,
-        }
-      case 'best-score':
-        return {
-          name: displayName,
-          accountName: hasAccountIdentity ? account.name : null,
-          value: formatScore(account.stats.bestScore),
-          secondaryValue: `${account.stats.kills.toLocaleString()} kills`,
-          sortPrimary: account.stats.bestScore,
-          sortSecondary: account.stats.kills,
-          ascending: false,
-          empty: account.stats.bestScore <= 0,
-        }
-      case 'accuracy':
-        return {
-          name: displayName,
-          accountName: hasAccountIdentity ? account.name : null,
-          value: formatAccuracy(account.stats.shots, account.stats.kills),
-          secondaryValue: `${account.stats.kills.toLocaleString()} / ${account.stats.shots.toLocaleString()} shots`,
-          sortPrimary: accuracy ?? Number.NEGATIVE_INFINITY,
-          sortSecondary: account.stats.kills,
-          ascending: false,
-          empty: accuracy === null,
-        }
-      case 'fastest-reaction':
-      default:
-        return {
-          name: displayName,
-          accountName: hasAccountIdentity ? account.name : null,
-          value: formatMs(account.stats.fastestReactionMs),
-          secondaryValue: `${account.stats.headshots.toLocaleString()} headshots`,
-          sortPrimary: account.stats.fastestReactionMs ?? Number.POSITIVE_INFINITY,
-          sortSecondary: account.stats.kills,
-          ascending: true,
-          empty: account.stats.fastestReactionMs === null,
-        }
-    }
-  })
+  if (hasMeaningfulProgress(state.anonymousProfile)) {
+    candidates.push({
+      name: getAnonymousDisplayName(state.anonymousProfile.id),
+      accountName: null,
+      xp: state.anonymousProfile.xp,
+      stats: state.anonymousProfile.stats,
+    })
+  }
+
+  const rows = candidates.map((candidate) => buildLeaderboardRow(candidate, category))
 
   const ascending = rows[0]?.ascending ?? false
   const rankedRows = rows

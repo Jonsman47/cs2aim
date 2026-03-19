@@ -345,9 +345,16 @@ export interface AuthAccount {
   cooldowns: AccountSubmissionCooldowns
 }
 
+export interface AnonymousProfile {
+  id: string
+  xp: number
+  stats: AccountStats
+}
+
 export interface AuthState {
   accounts: AuthAccount[]
   activeUserName: string | null
+  anonymousProfile: AnonymousProfile
 }
 
 export interface AccountStats {

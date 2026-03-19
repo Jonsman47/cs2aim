@@ -33,6 +33,7 @@ function App() {
     settings,
     snapshot,
     authMessage,
+    loggedInAccountName,
     leaderboards,
     feedbackPosts,
     feedbackStatus,
@@ -212,6 +213,7 @@ function App() {
               favoriteWeapon={snapshot.favoriteWeapon}
               averageShotTimeMs={snapshot.averageShotTimeMs}
               accountName={snapshot.accountName}
+              loggedInAccountName={loggedInAccountName}
               xp={snapshot.xp}
               authMessage={authMessage}
               leaderboards={leaderboards}
