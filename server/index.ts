@@ -19,7 +19,7 @@ import {
 
 const SESSION_COOKIE_NAME = 'midlane_session'
 const port = Number(process.env.PORT) || 3001
-const app = express()
+export const app = express()
 
 app.use(express.json({ limit: '1mb' }))
 
@@ -55,8 +55,8 @@ const respondWithSession = (
   payload: Record<string, unknown> & { sessionToken: string },
 ) => {
   setSessionCookie(res, payload.sessionToken)
-  const body = { ...payload }
-  delete body.sessionToken
+  const { sessionToken, ...body } = payload
+  void sessionToken
   res.json(body)
 }
 
@@ -213,11 +213,18 @@ app.use(
   },
 )
 
-const start = async () => {
+export const initializeServer = async () => {
   await runMigrations()
+}
+
+const start = async () => {
+  await initializeServer()
   app.listen(port, () => {
     console.log(`cs2aim backend listening on http://localhost:${port}`)
   })
 }
 
-void start()
+const currentFilePath = fileURLToPath(import.meta.url)
+if (process.argv[1] === currentFilePath) {
+  void start()
+}
