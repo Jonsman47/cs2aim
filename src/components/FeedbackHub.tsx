@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { getCooldownRemainingMs } from '../game/feedback.ts'
-import type { FeedbackPost } from '../game/types.ts'
+import { getCooldownRemainingMs } from '../game/feedback'
+import type { FeedbackPost } from '../game/types'
 
 interface FeedbackHubProps {
   accountName: string | null

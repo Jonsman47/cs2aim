@@ -1,4 +1,4 @@
-import type { ProgressionSyncRequest } from './types.ts'
+import type { ProgressionSyncRequest } from './types'
 
 const PROGRESSION_QUEUE_STORAGE_KEY = 'midlane-reaction-progress-queue'
 const MAX_QUEUED_EVENTS = 250

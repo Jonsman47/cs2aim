@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import './App.css'
-import { HotkeyHint } from './components/HotkeyHint.tsx'
-import { ShotFeedbackToast } from './components/ShotFeedbackToast.tsx'
-import { Hud } from './components/Hud.tsx'
-import { MainMenu } from './components/MainMenu.tsx'
-import { RoundResult } from './components/RoundResult.tsx'
-import { SessionSummary } from './components/SessionSummary.tsx'
+import { HotkeyHint } from './components/HotkeyHint'
+import { ShotFeedbackToast } from './components/ShotFeedbackToast'
+import { Hud } from './components/Hud'
+import { MainMenu } from './components/MainMenu'
+import { RoundResult } from './components/RoundResult'
+import { SessionSummary } from './components/SessionSummary'
 import {
   MODE_LABELS,
   SCOPE_LEVEL_LABELS,
@@ -14,9 +14,9 @@ import {
   formatBehaviorLabel,
   formatPeekSelectionLabel,
   withDerivedMode,
-} from './game/constants.ts'
-import { useReactionTrainer } from './game/useReactionTrainer.ts'
-import type { GameSettings, PeekSelection, PeekSpeedId, WeaponMode } from './game/types.ts'
+} from './game/constants'
+import { useReactionTrainer } from './game/useReactionTrainer'
+import type { GameSettings, PeekSelection, PeekSpeedId, WeaponMode } from './game/types'
 
 const isTypingTarget = (target: EventTarget | null) =>
   target instanceof HTMLElement &&

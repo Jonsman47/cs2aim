@@ -1,12 +1,12 @@
-import { getAdminRuntimeState } from './admin.ts'
-import { BEHAVIOR_LABELS, PEEK_SPEED_LABELS, WEAPON_LABELS } from './constants.ts'
-import { clamp } from './math.ts'
+import { getAdminRuntimeState } from './admin'
+import { BEHAVIOR_LABELS, PEEK_SPEED_LABELS, WEAPON_LABELS } from './constants'
+import { clamp } from './math'
 import type {
   BehaviorId,
   PeekSpeedId,
   ScoreBreakdownItem,
   WeaponMode,
-} from './types.ts'
+} from './types'
 
 interface ScoreInput {
   success: boolean

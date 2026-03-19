@@ -1,6 +1,6 @@
-import { ADMIN_USERNAME, setAdminRuntimeState } from '../src/game/admin.ts'
-import { LEADERBOARD_CATEGORIES } from '../src/game/auth.ts'
-import { getXpProgress } from '../src/game/xp.ts'
+import { ADMIN_USERNAME, setAdminRuntimeState } from '../src/game/admin'
+import { LEADERBOARD_CATEGORIES } from '../src/game/auth'
+import { getXpProgress } from '../src/game/xp'
 import type {
   AccountStats,
   AdminState,
@@ -10,7 +10,7 @@ import type {
   LeaderboardCategory,
   LeaderboardEntry,
   LeaderboardSnapshot,
-} from '../src/game/types.ts'
+} from '../src/game/types'
 
 interface LeaderboardRowCandidate {
   name: string

@@ -1,5 +1,5 @@
-import { ADMIN_USERNAME, getAdminRuntimeState } from './admin.ts'
-import { getXpProgress } from './xp.ts'
+import { ADMIN_USERNAME, getAdminRuntimeState } from './admin'
+import { getXpProgress } from './xp'
 import type {
   AccountSubmissionCooldowns,
   AccountStats,
@@ -9,7 +9,7 @@ import type {
   LeaderboardCategory,
   LeaderboardCategoryOption,
   LeaderboardEntry,
-} from './types.ts'
+} from './types'
 
 const AUTH_STORAGE_KEY = 'midlane-reaction-auth'
 export const ANONYMOUS_LEADERBOARD_NAME = 'Anonymous'

@@ -2,7 +2,7 @@ import express from 'express'
 import { existsSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { runMigrations } from './db.ts'
+import { runMigrations } from './db'
 import {
   bootstrapSession,
   fetchCommunitySnapshot,
@@ -15,7 +15,7 @@ import {
   syncAdminFeedbackStateToServer,
   syncAdminStateToServer,
   syncProgressionEvents,
-} from './store.ts'
+} from './store'
 
 const SESSION_COOKIE_NAME = 'midlane_session'
 const port = Number(process.env.PORT) || 3001

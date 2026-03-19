@@ -1,4 +1,4 @@
-import type { WeaponMode } from '../game/types.ts'
+import type { WeaponMode } from '../game/types'
 
 interface WeaponPreviewArtProps {
   weapon: WeaponMode

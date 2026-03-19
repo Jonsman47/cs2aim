@@ -8,7 +8,7 @@ import {
   PEEK_SPEEDS,
   WEAPON_LABELS,
   WEAPON_SELECTIONS,
-} from '../game/constants.ts'
+} from '../game/constants'
 import type {
   AdminState,
   AnonymousProfile,
@@ -19,7 +19,7 @@ import type {
   PeekSpeedId,
   SessionHistoryEntry,
   WeaponMode,
-} from '../game/types.ts'
+} from '../game/types'
 
 type AdminSection =
   | 'dashboard'

@@ -1,11 +1,11 @@
-import { DOOR_FRAME_OCCLUDERS, DOOR_PANELS, SOLID_COVER } from './constants.ts'
-import { intersectRayAabb, length, normalize, subtract } from './math.ts'
+import { DOOR_FRAME_OCCLUDERS, DOOR_PANELS, SOLID_COVER } from './constants'
+import { intersectRayAabb, length, normalize, subtract } from './math'
 import type {
   EnemyHitboxes,
   EnemyStance,
   HitRegion,
   Vector3,
-} from './types.ts'
+} from './types'
 
 const BODY_WIDTH = 0.56
 const BODY_DEPTH = 0.38

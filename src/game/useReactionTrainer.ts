@@ -7,7 +7,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from 'react'
-import { createAudioBus } from './audio.ts'
+import { createAudioBus } from './audio'
 import {
   appendAuditEntry,
   createDefaultAdminState,
@@ -24,7 +24,7 @@ import {
   saveAdminState,
   setAdminRuntimeState,
   ADMIN_USERNAME,
-} from './admin.ts'
+} from './admin'
 import {
   bootstrapSessionFromServer,
   sendProgressionBatchBeacon,
@@ -38,7 +38,7 @@ import {
   syncAdminFeedbackStateToServer,
   syncAdminStateToServer,
   syncProgressionBatchToServer,
-} from './api.ts'
+} from './api'
 import {
   LEADERBOARD_CATEGORIES,
   createEmptyAnonymousProfile,
@@ -48,24 +48,24 @@ import {
   loadAuthState,
   saveAuthState,
   updateAccountProgress,
-} from './auth.ts'
+} from './auth'
 import {
   DEFAULT_SETTINGS,
   PEEK_SELECTIONS,
   UI_KEYBINDS,
   WEAPON_SELECTIONS,
   withDerivedMode,
-} from './constants.ts'
+} from './constants'
 import {
   loadFeedbackState,
   saveFeedbackState,
-} from './feedback.ts'
+} from './feedback'
 import {
   loadProgressionQueue,
   saveProgressionQueue,
   stripQueuedProgressionEvent,
   type QueuedProgressionEvent,
-} from './progressionSync.ts'
+} from './progressionSync'
 import {
   applySettings,
   cycleScopeLevel,
@@ -80,11 +80,11 @@ import {
   updateAimFromAbsolute,
   updateAimFromDelta,
   updateRuntime,
-} from './engine.ts'
-import { renderScene } from './renderer.ts'
-import { loadPersistentState, savePersistentState } from './storage.ts'
-import { createEmptyLifetimeStats } from './stats.ts'
-import { getLevelStartXp } from './xp.ts'
+} from './engine'
+import { renderScene } from './renderer'
+import { loadPersistentState, savePersistentState } from './storage'
+import { createEmptyLifetimeStats } from './stats'
+import { getLevelStartXp } from './xp'
 import type {
   AccountStats,
   AdminState,
@@ -98,7 +98,7 @@ import type {
   LeaderboardBot,
   PeekSelection,
   WeaponMode,
-} from './types.ts'
+} from './types'
 
 const loadedState = loadPersistentState()
 const loadedLegacyAuthState = loadAuthState()

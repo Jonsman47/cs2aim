@@ -1,4 +1,4 @@
-import type { Aabb, Vector3 } from './types.ts'
+import type { Aabb, Vector3 } from './types'
 
 export interface Camera {
   position: Vector3

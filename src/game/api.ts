@@ -11,7 +11,7 @@ import type {
   LeaderboardSnapshot,
   SessionBootstrapRequest,
   SessionBootstrapResponse,
-} from './types.ts'
+} from './types'
 
 const apiRequest = async <T>(
   input: string,

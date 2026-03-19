@@ -1,8 +1,8 @@
-import { clamp, lerp } from './math.ts'
+import { clamp, lerp } from './math'
 import type {
   NormalCrosshairSettings,
   ScopedCrosshairSettings,
-} from './types.ts'
+} from './types'
 
 export interface CrosshairRenderState {
   normal: NormalCrosshairSettings

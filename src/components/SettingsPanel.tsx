@@ -1,5 +1,5 @@
-import { CrosshairPreview } from './CrosshairPreview.tsx'
-import { HotkeyHint } from './HotkeyHint.tsx'
+import { CrosshairPreview } from './CrosshairPreview'
+import { HotkeyHint } from './HotkeyHint'
 import {
   CROSSHAIR_COLOR_PRESETS,
   GRAPHICS_QUALITY_DETAILS,
@@ -16,7 +16,7 @@ import {
   UI_KEYBINDS,
   WEAPON_LABELS,
   withDerivedMode,
-} from '../game/constants.ts'
+} from '../game/constants'
 import type {
   CrosshairColorPreset,
   GameSettings,
@@ -26,7 +26,7 @@ import type {
   PeekSelection,
   PeekSpeedId,
   ScopedInnerCrosshairStyle,
-} from '../game/types.ts'
+} from '../game/types'
 
 interface SettingsPanelProps {
   settings: GameSettings

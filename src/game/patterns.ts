@@ -1,6 +1,6 @@
-import { getAdminRuntimeState } from './admin.ts'
-import { formatBehaviorLabel } from './constants.ts'
-import { clamp } from './math.ts'
+import { getAdminRuntimeState } from './admin'
+import { formatBehaviorLabel } from './constants'
+import { clamp } from './math'
 import type {
   BehaviorId,
   EnemyPlan,
@@ -10,7 +10,7 @@ import type {
   MotionKeyframe,
   PeekSpeedId,
   RepPlan,
-} from './types.ts'
+} from './types'
 
 type LanePatternBehavior = Exclude<BehaviorId, 'round-start'>
 

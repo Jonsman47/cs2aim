@@ -1,12 +1,12 @@
-import { HotkeyHint } from './HotkeyHint.tsx'
+import { HotkeyHint } from './HotkeyHint'
 import {
   MODE_LABELS,
   SESSION_TYPE_LABELS,
   UI_KEYBINDS,
   WEAPON_LABELS,
   formatBehaviorLabel,
-} from '../game/constants.ts'
-import type { SessionSummary } from '../game/types.ts'
+} from '../game/constants'
+import type { SessionSummary } from '../game/types'
 
 interface SessionSummaryProps {
   summary: SessionSummary

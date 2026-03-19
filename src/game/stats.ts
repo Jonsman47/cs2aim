@@ -1,4 +1,4 @@
-import { average, median } from './math.ts'
+import { average, median } from './math'
 import type {
   BehaviorId,
   GameSettings,
@@ -9,7 +9,7 @@ import type {
   SessionStats,
   SessionSummary,
   WeaponMode,
-} from './types.ts'
+} from './types'
 
 export const createEmptyWeaponUsage = (): Record<WeaponMode, number> => ({
   awp: 0,

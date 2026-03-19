@@ -5,7 +5,7 @@ import {
   POPULAR_PEEK_SELECTIONS,
   WEAPON_PROPERTIES,
   WEAPON_SELECTIONS,
-} from './constants.ts'
+} from './constants'
 import type {
   AccountStats,
   AdminState,
@@ -20,7 +20,7 @@ import type {
   SpeedAdminConfig,
   WeaponAdminConfig,
   WeaponMode,
-} from './types.ts'
+} from './types'
 
 export const ADMIN_STORAGE_KEY = 'midlane-reaction-admin'
 export const ADMIN_USERNAME = 'Jonsman'

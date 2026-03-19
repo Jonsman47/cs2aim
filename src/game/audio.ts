@@ -70,4 +70,4 @@ export const createAudioBus = (): AudioBus => {
     },
   }
 }
-import type { WeaponMode } from './types.ts'
+import type { WeaponMode } from './types'
