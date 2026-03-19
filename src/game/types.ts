@@ -320,6 +320,13 @@ export interface RoundResult {
   xpGained: number
   shotsFired: number
   missesBeforeHit: number
+  killCount: number
+  totalTargets: number
+  averageReactionTime: number | null
+  accuracy: number
+  headshotCount: number
+  wallbangCount: number
+  killReactionTimes: number[]
   doorVisibilityAssist: boolean
   breakdown: ScoreBreakdownItem[]
 }

@@ -273,6 +273,7 @@ export interface AccountProgressUpdate {
   headshotsDelta: number
   wallbangsDelta: number
   reactionTime: number | null
+  reactionTimes?: number[] | null
   score: number | null
 }
 
@@ -290,6 +291,20 @@ export const updateAccountProgress = (
     return state
   }
 
+  const normalizedReactionTimes =
+    update.reactionTimes?.filter(
+      (reactionTime): reactionTime is number =>
+        typeof reactionTime === 'number' && Number.isFinite(reactionTime) && reactionTime > 0,
+    ) ??
+    (typeof update.reactionTime === 'number' && Number.isFinite(update.reactionTime)
+      ? [update.reactionTime]
+      : [])
+  const qualifyingReactionTimes = normalizedReactionTimes.filter(
+    (reactionTime) => reactionTime < 1000,
+  )
+  const fastestReaction =
+    normalizedReactionTimes.length > 0 ? Math.min(...normalizedReactionTimes) : null
+
   const current = state.accounts[index]
   if (
     current.xp === Math.max(0, Math.round(update.xp)) &&
@@ -297,7 +312,7 @@ export const updateAccountProgress = (
     update.killsDelta <= 0 &&
     update.headshotsDelta <= 0 &&
     update.wallbangsDelta <= 0 &&
-    (update.reactionTime === null || update.reactionTime === undefined) &&
+    normalizedReactionTimes.length === 0 &&
     (update.score === null || update.score === undefined)
   ) {
     return state
@@ -309,19 +324,19 @@ export const updateAccountProgress = (
     headshots: current.stats.headshots + Math.max(update.headshotsDelta, 0),
     wallbangs: current.stats.wallbangs + Math.max(update.wallbangsDelta, 0),
     cumulativeReactionMs:
-      current.stats.cumulativeReactionMs + Math.max(update.reactionTime ?? 0, 0),
+      current.stats.cumulativeReactionMs +
+      normalizedReactionTimes.reduce((total, reactionTime) => total + reactionTime, 0),
     qualifyingReactionMs:
       current.stats.qualifyingReactionMs +
-      (update.reactionTime !== null && update.reactionTime < 1000 ? update.reactionTime : 0),
+      qualifyingReactionTimes.reduce((total, reactionTime) => total + reactionTime, 0),
     qualifyingReactionCount:
-      current.stats.qualifyingReactionCount +
-      (update.reactionTime !== null && update.reactionTime < 1000 ? 1 : 0),
+      current.stats.qualifyingReactionCount + qualifyingReactionTimes.length,
     fastestReactionMs:
-      update.reactionTime === null
+      fastestReaction === null
         ? current.stats.fastestReactionMs
         : current.stats.fastestReactionMs === null
-          ? update.reactionTime
-          : Math.min(current.stats.fastestReactionMs, update.reactionTime),
+          ? fastestReaction
+          : Math.min(current.stats.fastestReactionMs, fastestReaction),
     bestScore: Math.max(current.stats.bestScore, update.score ?? 0),
   }
 

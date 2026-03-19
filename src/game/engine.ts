@@ -26,6 +26,7 @@ import {
   recordLifetimeSession,
   recordLifetimeSuccess,
   recordMiss,
+  recordResolvedRep,
   recordSuccess,
 } from './stats.ts'
 import { evaluateShotReward, getXpProgress } from './xp.ts'
@@ -79,9 +80,20 @@ export interface RuntimeRepState {
   penaltyMs: number
   shotsFired: number
   missesBeforeHit: number
+  attemptXpGained: number
   eligibleTargetIds: Set<string>
   enemyHealthById: Record<string, number>
   enemies: RuntimeEnemyState[]
+  roundStart:
+    | {
+        targetCount: number
+        killEvents: Array<{
+          reactionTime: number
+          headshot: boolean
+          wallbang: boolean
+        }>
+      }
+    | null
 }
 
 export interface GameRuntime {
@@ -129,6 +141,15 @@ const neutralMessage = (detail: string): PracticeMessage => ({
   detail,
   tone: 'neutral',
 })
+
+const isRoundStartBehavior = (behavior: string | null | undefined) =>
+  behavior === 'round-start'
+
+const getAverageReactionTime = (reactionTimes: number[]) =>
+  reactionTimes.length > 0
+    ? reactionTimes.reduce((total, reactionTime) => total + reactionTime, 0) /
+      reactionTimes.length
+    : null
 
 const samplePlan = (
   plan: EnemyPlan,
@@ -228,11 +249,18 @@ const queueNextRep = (runtime: GameRuntime, now: number) => {
     penaltyMs: 0,
     shotsFired: 0,
     missesBeforeHit: 0,
+    attemptXpGained: 0,
     eligibleTargetIds: new Set(plan.eligibleTargetIds),
     enemyHealthById: Object.fromEntries(
       plan.enemies.map((enemy) => [enemy.id, WEAPON_PROPERTIES[runtime.settings.weapon].maxHealth]),
     ),
     enemies: [],
+    roundStart: isRoundStartBehavior(plan.behavior)
+      ? {
+          targetCount: plan.eligibleTargetIds.length,
+          killEvents: [],
+        }
+      : null,
   }
   runtime.nextRepAt = null
   runtime.lastResult = null
@@ -272,6 +300,9 @@ const buildRoundResult = (
     return null
   }
 
+  const killCount = success ? 1 : 0
+  const accuracy =
+    runtime.rep.shotsFired > 0 ? (killCount / runtime.rep.shotsFired) * 100 : 0
   const { total, breakdown } = evaluateAttemptScore({
     success,
     reactionTime,
@@ -297,12 +328,126 @@ const buildRoundResult = (
     xpGained,
     shotsFired: runtime.rep.shotsFired,
     missesBeforeHit: runtime.rep.missesBeforeHit,
+    killCount,
+    totalTargets: 1,
+    averageReactionTime: reactionTime,
+    accuracy,
+    headshotCount: headshot ? 1 : 0,
+    wallbangCount: wallbang ? 1 : 0,
+    killReactionTimes: success && reactionTime !== null ? [reactionTime] : [],
     doorVisibilityAssist: runtime.settings.doorVisibilityAssist,
     breakdown,
   }
 }
 
+const buildRoundStartResult = (
+  runtime: GameRuntime,
+  success: boolean,
+): RoundResult | null => {
+  if (!runtime.rep) {
+    return null
+  }
+
+  const killEvents = runtime.rep.roundStart?.killEvents ?? []
+  const killReactionTimes = killEvents.map((killEvent) => killEvent.reactionTime)
+  const killCount = killEvents.length
+  const totalTargets = runtime.rep.roundStart?.targetCount ?? runtime.rep.eligibleTargetIds.size
+  const averageReactionTime = getAverageReactionTime(killReactionTimes)
+  const headshotCount = killEvents.reduce(
+    (total, killEvent) => total + (killEvent.headshot ? 1 : 0),
+    0,
+  )
+  const wallbangCount = killEvents.reduce(
+    (total, killEvent) => total + (killEvent.wallbang ? 1 : 0),
+    0,
+  )
+  const accuracy =
+    runtime.rep.shotsFired > 0 ? (killCount / runtime.rep.shotsFired) * 100 : 0
+  const { total, breakdown } = evaluateAttemptScore({
+    success,
+    reactionTime: averageReactionTime,
+    headshot: headshotCount > 0,
+    wallbang: wallbangCount > 0,
+    behavior: runtime.rep.plan.behavior,
+    speed: runtime.rep.plan.speed,
+    weapon: runtime.settings.weapon,
+    missesBeforeHit: runtime.rep.missesBeforeHit,
+    shotsFired: runtime.rep.shotsFired,
+    doorVisibilityAssist: runtime.settings.doorVisibilityAssist,
+  })
+
+  return {
+    success,
+    reactionTime: averageReactionTime,
+    wallbang: wallbangCount > 0,
+    headshot: headshotCount > 0,
+    weapon: runtime.settings.weapon,
+    behavior: runtime.rep.plan.behavior,
+    speed: runtime.rep.plan.speed,
+    score: total,
+    xpGained: runtime.rep.attemptXpGained,
+    shotsFired: runtime.rep.shotsFired,
+    missesBeforeHit: runtime.rep.missesBeforeHit,
+    killCount,
+    totalTargets,
+    averageReactionTime,
+    accuracy,
+    headshotCount,
+    wallbangCount,
+    killReactionTimes,
+    doorVisibilityAssist: runtime.settings.doorVisibilityAssist,
+    breakdown,
+  }
+}
+
+const finalizeRoundStartAttempt = (
+  runtime: GameRuntime,
+  success: boolean,
+  detail: string,
+) => {
+  if (!runtime.rep) {
+    return
+  }
+
+  const killEvents = runtime.rep.roundStart?.killEvents ?? []
+  runtime.stats = recordResolvedRep(runtime.stats, {
+    rep: runtime.currentRep,
+    behavior: runtime.rep.plan.behavior,
+    speed: runtime.rep.plan.speed,
+    killResults: killEvents,
+    failed: !success,
+  })
+
+  let lifetime = runtime.lifetime
+  for (const killEvent of killEvents) {
+    lifetime = recordLifetimeSuccess(
+      lifetime,
+      killEvent.reactionTime,
+      killEvent.wallbang,
+      killEvent.headshot,
+    )
+  }
+  if (!success) {
+    lifetime = recordLifetimeFailure(lifetime)
+  }
+  runtime.lifetime = lifetime
+  runtime.phase = 'result'
+  runtime.nextRepAt = null
+  runtime.lastResult = buildRoundStartResult(runtime, success)
+  runtime.currentMessage = {
+    title: success ? 'Sequence Cleared' : 'Round Start Ended',
+    detail,
+    tone: success ? 'good' : 'bad',
+  }
+  runtime.persistenceVersion += 1
+}
+
 const resolveFailure = (runtime: GameRuntime, now: number, detail: string) => {
+  if (isRoundStartBehavior(runtime.rep?.plan.behavior)) {
+    finalizeRoundStartAttempt(runtime, false, detail)
+    return
+  }
+
   runtime.stats = recordFailure(runtime.stats)
   runtime.lifetime = recordLifetimeFailure(runtime.lifetime)
   runtime.phase = 'cooldown'
@@ -330,6 +475,35 @@ const resolveSuccess = (
 
   runtime.rep.enemyHealthById[enemyId] = 0
   runtime.rep.deadIds.add(enemyId)
+
+  if (isRoundStartBehavior(runtime.rep.plan.behavior)) {
+    runtime.rep.roundStart?.killEvents.push({
+      reactionTime,
+      headshot,
+      wallbang,
+    })
+
+    const killCount = runtime.rep.roundStart?.killEvents.length ?? 0
+    const totalTargets = runtime.rep.roundStart?.targetCount ?? runtime.rep.eligibleTargetIds.size
+
+    if (killCount >= totalTargets) {
+      finalizeRoundStartAttempt(
+        runtime,
+        true,
+        `Cleared all ${totalTargets} enemies in the Round Start sequence.`,
+      )
+      return
+    }
+
+    runtime.currentMessage = {
+      title: 'Sequence Live',
+      detail: `${killCount} / ${totalTargets} down. Stay ready for the remaining crossers.`,
+      tone: 'good',
+    }
+    runtime.persistenceVersion += 1
+    return
+  }
+
   runtime.stats = recordSuccess(runtime.stats, reactionTime, {
     rep: runtime.currentRep,
     behavior: runtime.rep.plan.behavior,
@@ -409,6 +583,14 @@ const setShotFeedback = (
     wallbang,
     headshot,
   }
+}
+
+const addAttemptXp = (runtime: GameRuntime, xpGained: number) => {
+  if (!runtime.rep) {
+    return
+  }
+
+  runtime.rep.attemptXpGained += Math.max(0, xpGained)
 }
 
 const applyMissPunishment = (runtime: GameRuntime, now: number) => {
@@ -702,7 +884,9 @@ export const updateRuntime = (runtime: GameRuntime, now: number) => {
     runtime.phase = 'active'
     runtime.currentMessage = {
       title: 'Rep Live',
-      detail: 'A live target can appear at any moment. Only a valid hit will stop the rep.',
+      detail: isRoundStartBehavior(runtime.rep.plan.behavior)
+        ? 'The Round Start sequence is live. Clear the crossing pack before the sequence ends.'
+        : 'A live target can appear at any moment. Only a valid hit will stop the rep.',
       tone: 'neutral',
     }
   }
@@ -760,8 +944,12 @@ export const updateRuntime = (runtime: GameRuntime, now: number) => {
       }
     } else {
       runtime.currentMessage = {
-        title: 'Target Committed',
-        detail: 'The enemy is exposed in the opening. Land a clean hit to stop the rep.',
+        title: isRoundStartBehavior(runtime.rep.plan.behavior)
+          ? 'Sequence Committed'
+          : 'Target Committed',
+        detail: isRoundStartBehavior(runtime.rep.plan.behavior)
+          ? 'The crossing lane is open. Clear the remaining enemies before the sequence ends.'
+          : 'The enemy is exposed in the opening. Land a clean hit to stop the rep.',
         tone: 'neutral',
       }
     }
@@ -933,6 +1121,7 @@ export const fireShot = (runtime: GameRuntime, now: number): FireOutcome => {
     runtime.stats = recordMiss(runtime.stats)
     runtime.lifetime = recordLifetimeMiss(runtime.lifetime)
     runtime.accountXp += xpGained
+    addAttemptXp(runtime, xpGained)
     runtime.rep.missesBeforeHit += 1
     setShotFeedback(
       runtime,
@@ -987,6 +1176,7 @@ export const fireShot = (runtime: GameRuntime, now: number): FireOutcome => {
     runtime.lifetime = recordLifetimeMiss(runtime.lifetime)
     runtime.rep.missesBeforeHit += 1
     runtime.accountXp += xpGained
+    addAttemptXp(runtime, xpGained)
     setShotFeedback(
       runtime,
       now,
@@ -1034,6 +1224,7 @@ export const fireShot = (runtime: GameRuntime, now: number): FireOutcome => {
     runtime.lifetime = recordLifetimeMiss(runtime.lifetime)
     runtime.rep.missesBeforeHit += 1
     runtime.accountXp += xpGained
+    addAttemptXp(runtime, xpGained)
     setShotFeedback(
       runtime,
       now,
@@ -1099,6 +1290,7 @@ export const fireShot = (runtime: GameRuntime, now: number): FireOutcome => {
   const xpLabel = runtime.accountName ? `+${xpGained} XP` : 'Login for XP'
 
   runtime.accountXp += xpGained
+  addAttemptXp(runtime, xpGained)
   setShotFeedback(
     runtime,
     now,

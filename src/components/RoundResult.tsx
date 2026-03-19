@@ -15,6 +15,9 @@ interface RoundResultProps {
 const formatShotScore = (value: number) =>
   `${Math.max(0, Math.min(100, Math.round(value)))}`
 
+const formatReaction = (value: number | null) =>
+  value === null ? '--' : `${Math.round(value)} ms`
+
 export function RoundResult({
   result,
   nextLabel,
@@ -24,12 +27,25 @@ export function RoundResult({
   onRestart,
   onMenu,
 }: RoundResultProps) {
-  const showHitFlags = showHitLabels && (result.headshot || result.wallbang)
+  const isRoundStart = result.behavior === 'round-start'
+  const showHitFlags =
+    !isRoundStart && showHitLabels && (result.headshot || result.wallbang)
+  const primaryReactionTime = isRoundStart
+    ? result.averageReactionTime
+    : result.reactionTime
 
   return (
     <div className="round-result-overlay">
       <div className={`round-result-card ${result.success ? '' : 'is-failed'}`}>
-        <p className="eyebrow">{result.success ? 'Successful Hit' : 'Rep Result'}</p>
+        <p className="eyebrow">
+          {isRoundStart
+            ? result.success
+              ? 'Round Start Cleared'
+              : 'Round Start Result'
+            : result.success
+              ? 'Successful Hit'
+              : 'Rep Result'}
+        </p>
 
         <div className="round-result-flags">
           {showHitFlags && result.headshot && (
@@ -43,44 +59,91 @@ export function RoundResult({
           )}
         </div>
 
-        {showHitLabels && result.headshot && (
+        {showHitLabels && !isRoundStart && result.headshot && (
           <p className="round-result-callout">HEADSHOT</p>
         )}
 
-        {result.success && result.reactionTime !== null ? (
+        {(result.success || (isRoundStart && result.killCount > 0)) && primaryReactionTime !== null ? (
           <>
-            <span className="round-result-label">Reaction Time</span>
+            <span className="round-result-label">
+              {isRoundStart ? 'Average Reaction Time' : 'Reaction Time'}
+            </span>
             <strong className="round-result-time">
-              {Math.round(result.reactionTime)} ms
+              {Math.round(primaryReactionTime)} ms
             </strong>
           </>
         ) : (
           <strong className="round-result-time round-result-time-fail">
-            No Valid Hit
+            {isRoundStart ? 'No Valid Kills' : 'No Valid Hit'}
           </strong>
         )}
 
         <div className="round-result-score">
-          <span>Shot Score / 100</span>
+          <span>{isRoundStart ? 'Attempt Score / 100' : 'Shot Score / 100'}</span>
           <strong>{formatShotScore(result.score)}</strong>
         </div>
 
         <div className="round-result-score round-result-score-xp">
-          <span>{result.xpGained > 0 ? 'XP Gained' : 'Progression'}</span>
+          <span>
+            {result.xpGained > 0
+              ? isRoundStart
+                ? 'Attempt XP'
+                : 'XP Gained'
+              : 'Progression'}
+          </span>
           <strong>{result.xpGained > 0 ? `+${result.xpGained} XP` : 'Login to bank XP'}</strong>
         </div>
 
-        <p className="round-result-copy">
-          {WEAPON_LABELS[result.weapon]} / {formatBehaviorLabel(result.behavior, result.speed)} /{' '}
-          {result.shotsFired} shot{result.shotsFired === 1 ? '' : 's'} fired /{' '}
-          {result.success
-            ? result.missesBeforeHit === 0
-              ? 'clean first-shot finish'
-              : `${result.missesBeforeHit} miss${
-                  result.missesBeforeHit === 1 ? '' : 'es'
-                } before the hit`
-            : 'rep ended without a valid finish'}
-        </p>
+        {isRoundStart ? (
+          <>
+            <div className="metric-grid round-result-metric-grid">
+              <div className="metric-card">
+                <span>Kills</span>
+                <strong>
+                  {result.killCount} / {result.totalTargets}
+                </strong>
+              </div>
+              <div className="metric-card">
+                <span>Accuracy</span>
+                <strong>{result.accuracy.toFixed(1)}%</strong>
+              </div>
+              <div className="metric-card">
+                <span>Headshots</span>
+                <strong>{result.headshotCount}</strong>
+              </div>
+              <div className="metric-card">
+                <span>Wallbangs</span>
+                <strong>{result.wallbangCount}</strong>
+              </div>
+              <div className="metric-card">
+                <span>Total Shots</span>
+                <strong>{result.shotsFired}</strong>
+              </div>
+              <div className="metric-card">
+                <span>Misses</span>
+                <strong>{result.missesBeforeHit}</strong>
+              </div>
+            </div>
+
+            <p className="round-result-copy">
+              {WEAPON_LABELS[result.weapon]} / {formatBehaviorLabel(result.behavior, result.speed)} /{' '}
+              {result.killCount} of {result.totalTargets} enemies cleared / Average{' '}
+              {formatReaction(result.averageReactionTime)}
+            </p>
+          </>
+        ) : (
+          <p className="round-result-copy">
+            {WEAPON_LABELS[result.weapon]} / {formatBehaviorLabel(result.behavior, result.speed)} /{' '}
+            {result.shotsFired} shot{result.shotsFired === 1 ? '' : 's'} fired /{' '}
+            {result.success
+              ? result.missesBeforeHit === 0
+                ? 'clean first-shot finish'
+                : `${result.missesBeforeHit} miss${
+                    result.missesBeforeHit === 1 ? '' : 'es'
+                  } before the hit`
+              : 'rep ended without a valid finish'}
+          </p>
+        )}
 
         <p className="round-result-hint">
           Press <kbd>{UI_KEYBINDS.nextTry.label}</kbd> for next try

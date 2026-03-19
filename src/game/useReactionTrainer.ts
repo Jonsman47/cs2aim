@@ -199,10 +199,19 @@ export const useReactionTrainer = () => {
       currentSnapshot.stats.wallbangHits - previousSnapshot.stats.wallbangHits,
       0,
     )
-    const reactionTime =
+    const reactionTimes =
       killsDelta > 0
-        ? currentSnapshot.lastResult?.reactionTime ?? currentSnapshot.stats.lastSuccessful
-        : null
+        ? currentSnapshot.lastResult?.killReactionTimes?.length
+          ? currentSnapshot.lastResult.killReactionTimes
+          : currentSnapshot.lastResult?.reactionTime !== null &&
+              currentSnapshot.lastResult?.reactionTime !== undefined
+            ? [currentSnapshot.lastResult.reactionTime]
+            : currentSnapshot.stats.lastSuccessful !== null
+              ? [currentSnapshot.stats.lastSuccessful]
+              : []
+        : []
+    const reactionTime =
+      reactionTimes.length > 0 ? reactionTimes[reactionTimes.length - 1] : null
     const score = killsDelta > 0 ? currentSnapshot.lastResult?.score ?? null : null
 
     setAuthState((current) =>
@@ -213,6 +222,7 @@ export const useReactionTrainer = () => {
         headshotsDelta,
         wallbangsDelta,
         reactionTime,
+        reactionTimes,
         score,
       }),
     )

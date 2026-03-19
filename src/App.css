@@ -404,6 +404,10 @@
   text-transform: uppercase;
 }
 
+.round-result-metric-grid {
+  margin-top: 18px;
+}
+
 .round-result-hint {
   margin: 14px 0 0;
   color: rgba(214, 227, 242, 0.78);

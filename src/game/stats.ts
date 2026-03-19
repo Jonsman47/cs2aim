@@ -1,7 +1,9 @@
 import { average, median } from './math.ts'
 import type {
+  BehaviorId,
   GameSettings,
   LifetimeStats,
+  PeekSpeedId,
   RecentResult,
   SessionHistoryEntry,
   SessionStats,
@@ -109,6 +111,60 @@ export const recordSuccess = (
     recentResults: [result, ...stats.recentResults].slice(0, 14),
     lastSuccessful: reactionTime,
   })
+
+export const recordResolvedRep = (
+  stats: SessionStats,
+  {
+    rep,
+    behavior,
+    speed,
+    killResults,
+    failed,
+  }: {
+    rep: number
+    behavior: BehaviorId
+    speed: PeekSpeedId
+    killResults: Array<Pick<RecentResult, 'reactionTime' | 'wallbang' | 'headshot'>>
+    failed: boolean
+  },
+) => {
+  const recentResults = killResults
+    .map((result) => ({
+      rep,
+      behavior,
+      speed,
+      reactionTime: result.reactionTime,
+      wallbang: result.wallbang,
+      headshot: result.headshot,
+    }))
+    .reverse()
+  const wallbangHits = killResults.reduce(
+    (total, result) => total + (result.wallbang ? 1 : 0),
+    0,
+  )
+  const headshots = killResults.reduce(
+    (total, result) => total + (result.headshot ? 1 : 0),
+    0,
+  )
+  const reactionTimes = killResults.map((result) => result.reactionTime)
+  const lastSuccessful =
+    reactionTimes.length > 0
+      ? reactionTimes[reactionTimes.length - 1]
+      : stats.lastSuccessful
+
+  return withDerived({
+    ...stats,
+    hits: stats.hits + killResults.length,
+    failedReps: stats.failedReps + (failed ? 1 : 0),
+    repsCompleted: stats.repsCompleted + 1,
+    successes: stats.successes + killResults.length,
+    wallbangHits: stats.wallbangHits + wallbangHits,
+    headshots: stats.headshots + headshots,
+    reactionTimes: [...stats.reactionTimes, ...reactionTimes],
+    recentResults: [...recentResults, ...stats.recentResults].slice(0, 14),
+    lastSuccessful,
+  })
+}
 
 export const recordLifetimeMiss = (lifetime: LifetimeStats): LifetimeStats => ({
   ...lifetime,
