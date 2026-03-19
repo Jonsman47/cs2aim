@@ -9,6 +9,7 @@ export type GamePhase =
 export type GameMode =
   | 'standard'
   | 'door-cross'
+  | 'round-start'
   | 'wallbang'
   | 'mixed'
   | 'accuracy'
@@ -53,6 +54,7 @@ export type BehaviorId =
   | 'shoulder-bait'
   | 'stop-cross'
   | 'crouch-peek'
+  | 'round-start'
   | 'wallbang-timing-peek'
 
 export type PeekSelection =
@@ -66,6 +68,7 @@ export type PeekSelection =
   | 'shoulder-bait'
   | 'stop-cross'
   | 'crouch-peek'
+  | 'round-start'
   | 'wallbang-timing-peek'
   | 'mixed'
 
@@ -332,6 +335,7 @@ export interface AuthAccount {
   password: string
   xp: number
   stats: AccountStats
+  cooldowns: AccountSubmissionCooldowns
 }
 
 export interface AuthState {
@@ -349,6 +353,26 @@ export interface AccountStats {
   qualifyingReactionCount: number
   fastestReactionMs: number | null
   bestScore: number
+}
+
+export interface AccountSubmissionCooldowns {
+  bugReportAt: number | null
+  featureRequestAt: number | null
+}
+
+export type FeedbackCategory = 'bug-report' | 'feature-request' | 'review'
+
+export interface FeedbackPost {
+  id: string
+  category: FeedbackCategory
+  body: string
+  createdAt: number
+  authorName: string
+  accountName: string | null
+}
+
+export interface FeedbackState {
+  posts: FeedbackPost[]
 }
 
 export type LeaderboardCategory =
@@ -369,6 +393,7 @@ export interface LeaderboardCategoryOption {
 
 export interface LeaderboardEntry {
   name: string
+  accountName: string | null
   value: string
   secondaryValue?: string
 }

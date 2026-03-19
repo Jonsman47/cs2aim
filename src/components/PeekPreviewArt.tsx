@@ -258,6 +258,17 @@ const renderPeekArt = (peek: PeekSelection) => {
           <MotionStroke d="M152 94 C144 88 136 88 126 95" accent="#f5c66e" />
         </>
       )
+    case 'round-start':
+      return (
+        <>
+          <Actor x={178} y={94} ghost />
+          <Actor x={152} y={70} scale={0.88} ghost />
+          <Actor x={126} y={92} scale={0.94} />
+          <Actor x={98} y={90} scale={0.9} ghost />
+          <MotionStroke d="M186 88 C170 84 154 84 136 86 C120 88 108 90 92 88" accent="#f5c66e" />
+          <MotionStroke d="M164 92 C156 82 150 70 144 60 C136 52 128 62 120 78" accent="#8ef0cb" opacity={0.72} />
+        </>
+      )
     case 'wallbang-timing-peek':
       return (
         <>

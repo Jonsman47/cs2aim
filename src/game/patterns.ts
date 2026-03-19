@@ -11,6 +11,8 @@ import type {
   RepPlan,
 } from './types.ts'
 
+type LanePatternBehavior = Exclude<BehaviorId, 'round-start'>
+
 interface PatternDefinition {
   baseFrames: PatternFrame[]
   alternateBaseFrames?: PatternFrame[]
@@ -76,7 +78,7 @@ const SPEED_TIME_SCALE: Record<PeekSpeedId, number> = {
   'super-fast': CS2_NORMAL_BASELINE_TIME_SCALE * 0.62,
 }
 
-const PATTERN_LIBRARY: Record<BehaviorId, PatternDefinition> = {
+const PATTERN_LIBRARY: Record<LanePatternBehavior, PatternDefinition> = {
   cross: {
     baseFrames: [
       [0, -6.9, 0.1],
@@ -269,12 +271,13 @@ const pickWeightedCrossDirection = (): 1 | -1 =>
 const buildEnemyPlan = (
   repId: number,
   role: EnemyRole,
-  behavior: BehaviorId,
+  behavior: LanePatternBehavior,
   speed: PeekSpeedId,
   settings: GameSettings,
   mirror: 1 | -1,
   laneDepth: number,
   startOffsetMs = 0,
+  idToken: string = role,
 ): EnemyPlan => {
   const pattern = PATTERN_LIBRARY[behavior]
   const timeScale = clamp(
@@ -293,7 +296,7 @@ const buildEnemyPlan = (
   )
 
   return {
-    id: `${repId}-${role}`,
+    id: `${repId}-${idToken}`,
     role,
     behavior,
     wallbangOpportunity: pattern.wallbangOpportunity,
@@ -307,7 +310,7 @@ const getMixedWeights = (settings: GameSettings) => {
   const baitBoost = settings.difficulty.fakeFrequency * 1.6
   const wallbangBoost = settings.difficulty.wallbangFrequency * 2.2
 
-  return (Object.entries(PATTERN_LIBRARY) as Array<[BehaviorId, PatternDefinition]>).map(
+  return (Object.entries(PATTERN_LIBRARY) as Array<[LanePatternBehavior, PatternDefinition]>).map(
     ([behavior, definition]) => {
       let weight = definition.mixedWeight
 
@@ -323,7 +326,7 @@ const getMixedWeights = (settings: GameSettings) => {
         weight += wallbangBoost
       }
 
-      return [behavior, weight] as [BehaviorId, number]
+      return [behavior, weight] as [LanePatternBehavior, number]
     },
   )
 }
@@ -334,7 +337,7 @@ const createSecondaryPlan = (
   settings: GameSettings,
   mirror: 1 | -1,
 ): EnemyPlan => {
-  const secondaryBehavior = weightedPick<BehaviorId>([
+  const secondaryBehavior = weightedPick<LanePatternBehavior>([
     ['shoulder-bait', 1],
     ['jiggle-peek', 0.88],
     ['wide-swing', 0.62],
@@ -351,6 +354,96 @@ const createSecondaryPlan = (
     randomBetween(laneDepthRange[0], laneDepthRange[1]),
     Math.round(randomBetween(150, 280)),
   )
+}
+
+const ROUND_START_LANE_DEPTHS = [47.05, 47.09, 47.14, 47.18] as const
+
+const getPreRoundDelayMs = (settings: GameSettings) => {
+  const prePeekDelayMinMs = Math.max(
+    250,
+    Math.min(settings.prePeekDelayMinMs, settings.prePeekDelayMaxMs),
+  )
+  const prePeekDelayMaxMs = Math.max(
+    prePeekDelayMinMs,
+    settings.prePeekDelayMaxMs,
+  )
+
+  return Math.round(randomBetween(prePeekDelayMinMs, prePeekDelayMaxMs))
+}
+
+const createRoundStartOffsets = (enemyCount: number) => {
+  if (enemyCount <= 1) {
+    return [0]
+  }
+
+  const desiredSpreadMs = randomBetween(1100, 1900)
+  const gapWeights = Array.from({ length: enemyCount - 1 }, () =>
+    randomBetween(0.82, 1.28),
+  )
+  const totalWeight = gapWeights.reduce((sum, weight) => sum + weight, 0)
+  let elapsed = 0
+  const offsets = [0]
+
+  for (const weight of gapWeights) {
+    elapsed += (desiredSpreadMs * weight) / totalWeight
+    offsets.push(Math.round(elapsed))
+  }
+
+  return offsets
+}
+
+const pickRoundStartBehaviors = (enemyCount: number) => {
+  const behaviors = Array.from({ length: enemyCount }, () => 'cross' as LanePatternBehavior)
+  const jumpCount = enemyCount === 2 ? 1 : Math.min(enemyCount - 1, Math.random() < 0.42 ? 2 : 1)
+  const pickedIndices = new Set<number>()
+
+  while (pickedIndices.size < jumpCount) {
+    pickedIndices.add(Math.floor(Math.random() * enemyCount))
+  }
+
+  for (const index of pickedIndices) {
+    behaviors[index] = 'jumping-cross'
+  }
+
+  return behaviors
+}
+
+const createRoundStartPlan = (
+  repId: number,
+  settings: GameSettings,
+): RepPlan => {
+  const enemyCount = Math.floor(randomBetween(2, 5))
+  const speed = settings.selectedSpeed
+  const offsets = createRoundStartOffsets(enemyCount)
+  const behaviors = pickRoundStartBehaviors(enemyCount)
+  const depthRotation = Math.floor(Math.random() * ROUND_START_LANE_DEPTHS.length)
+
+  const enemies = offsets.map((startOffsetMs, index) =>
+    buildEnemyPlan(
+      repId,
+      index === 0 ? 'primary' : 'secondary',
+      behaviors[index],
+      speed,
+      settings,
+      -1,
+      ROUND_START_LANE_DEPTHS[(index + depthRotation) % ROUND_START_LANE_DEPTHS.length] +
+        randomBetween(-0.012, 0.012),
+      startOffsetMs,
+      index === 0 ? 'primary' : `secondary-${index}`,
+    ),
+  )
+
+  return {
+    id: repId,
+    behavior: 'round-start',
+    speed,
+    enemies,
+    eligibleTargetIds: enemies.map((enemy) => enemy.id),
+    preRoundDelayMs: getPreRoundDelayMs(settings),
+    totalDurationMs: Math.max(...enemies.map((enemy) => enemy.despawnAt)) + 80,
+    designedWallbang: enemies.some((enemy) => enemy.wallbangOpportunity),
+    doubleScenario: false,
+  }
 }
 
 const getSelectedBehavior = (
@@ -403,6 +496,10 @@ export const createRepPlan = (
   settings: GameSettings,
 ): RepPlan => {
   const behavior = getSelectedBehavior(repId, settings)
+  if (behavior === 'round-start') {
+    return createRoundStartPlan(repId, settings)
+  }
+
   const speed = settings.selectedSpeed
   const pattern = PATTERN_LIBRARY[behavior]
   const mirror = getMirror(repId, settings.selectedPeek, settings, pattern)
@@ -431,18 +528,6 @@ export const createRepPlan = (
     ? [primary, createSecondaryPlan(repId, speed, settings, mirror as 1 | -1)]
     : [primary]
 
-  const prePeekDelayMinMs = Math.max(
-    250,
-    Math.min(settings.prePeekDelayMinMs, settings.prePeekDelayMaxMs),
-  )
-  const prePeekDelayMaxMs = Math.max(
-    prePeekDelayMinMs,
-    settings.prePeekDelayMaxMs,
-  )
-  const preRoundDelayMs = Math.round(
-    randomBetween(prePeekDelayMinMs, prePeekDelayMaxMs),
-  )
-
   return {
     id: repId,
     behavior,
@@ -452,7 +537,7 @@ export const createRepPlan = (
       doubleScenario && settings.allowDoubleActive
         ? enemies.map((enemy) => enemy.id)
         : [primary.id],
-    preRoundDelayMs,
+    preRoundDelayMs: getPreRoundDelayMs(settings),
     totalDurationMs: Math.max(...enemies.map((enemy) => enemy.despawnAt)) + 80,
     designedWallbang: enemies.some((enemy) => enemy.wallbangOpportunity),
     doubleScenario,

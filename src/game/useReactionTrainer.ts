@@ -20,6 +20,11 @@ import {
 } from './auth.ts'
 import { UI_KEYBINDS, withDerivedMode } from './constants.ts'
 import {
+  loadFeedbackState,
+  saveFeedbackState,
+  submitFeedbackPost,
+} from './feedback.ts'
+import {
   applySettings,
   cycleScopeLevel,
   createGameRuntime,
@@ -36,10 +41,11 @@ import {
 } from './engine.ts'
 import { renderScene } from './renderer.ts'
 import { loadPersistentState, savePersistentState } from './storage.ts'
-import type { AuthState, GameSettings } from './types.ts'
+import type { AuthState, FeedbackState, GameSettings } from './types.ts'
 
 const loadedState = loadPersistentState()
 const loadedAuthState = loadAuthState()
+const loadedFeedbackState = loadFeedbackState()
 
 const createInitialRuntime = () => {
   const runtime = createGameRuntime(
@@ -70,6 +76,8 @@ export const useReactionTrainer = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const audioRef = useRef<ReturnType<typeof createAudioBus> | null>(null)
   const runtimeRef = useRef<ReturnType<typeof createGameRuntime>>(null as never)
+  const authStorageSnapshotRef = useRef(JSON.stringify(loadedAuthState))
+  const feedbackStorageSnapshotRef = useRef(JSON.stringify(loadedFeedbackState))
   if (!runtimeRef.current) {
     runtimeRef.current = createInitialRuntime()
   }
@@ -77,9 +85,20 @@ export const useReactionTrainer = () => {
     withDerivedMode(loadedState.settings),
   )
   const [authState, setAuthState] = useState<AuthState>(loadedAuthState)
+  const [feedbackState, setFeedbackState] = useState<FeedbackState>(loadedFeedbackState)
   const [authMessage, setAuthMessage] = useState<string | null>(null)
+  const [feedbackStatus, setFeedbackStatus] = useState<{
+    bugReport: { tone: 'good' | 'warn'; message: string } | null
+    featureRequest: { tone: 'good' | 'warn'; message: string } | null
+    review: { tone: 'good' | 'warn'; message: string } | null
+  }>({
+    bugReport: null,
+    featureRequest: null,
+    review: null,
+  })
   const [snapshot, setSnapshot] = useState(() => getSnapshot(runtimeRef.current))
   const lastProgressSnapshotRef = useRef(getSnapshot(runtimeRef.current))
+  const activeAccount = getActiveAccount(authState)
 
   const leaderboards = LEADERBOARD_CATEGORIES.map((category) => ({
     ...category,
@@ -105,8 +124,47 @@ export const useReactionTrainer = () => {
   }, [settings, snapshot.persistenceVersion])
 
   useEffect(() => {
+    authStorageSnapshotRef.current = JSON.stringify(authState)
     saveAuthState(authState)
   }, [authState])
+
+  useEffect(() => {
+    feedbackStorageSnapshotRef.current = JSON.stringify(feedbackState)
+    saveFeedbackState(feedbackState)
+  }, [feedbackState])
+
+  useEffect(() => {
+    const syncCommunityState = () => {
+      const latestAuthState = loadAuthState()
+      const latestAuthSerialized = JSON.stringify(latestAuthState)
+      if (latestAuthSerialized !== authStorageSnapshotRef.current) {
+        authStorageSnapshotRef.current = latestAuthSerialized
+        startTransition(() => {
+          setAuthState(latestAuthState)
+        })
+      }
+
+      const latestFeedbackState = loadFeedbackState()
+      const latestFeedbackSerialized = JSON.stringify(latestFeedbackState)
+      if (latestFeedbackSerialized !== feedbackStorageSnapshotRef.current) {
+        feedbackStorageSnapshotRef.current = latestFeedbackSerialized
+        startTransition(() => {
+          setFeedbackState(latestFeedbackState)
+        })
+      }
+    }
+
+    const interval = window.setInterval(syncCommunityState, 30000)
+    const onStorage = () => {
+      syncCommunityState()
+    }
+
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [])
 
   useEffect(() => {
     const activeAccount = getActiveAccount(authState)
@@ -309,6 +367,62 @@ export const useReactionTrainer = () => {
     applyAuthUpdate(logoutAccount(authState), 'Logged out. XP progression is paused.')
   }
 
+  const submitBugReport = (body: string) => {
+    const result = submitFeedbackPost({
+      feedbackState,
+      authState,
+      category: 'bug-report',
+      body,
+    })
+    setFeedbackState(result.feedbackState)
+    setAuthState(result.authState)
+    setFeedbackStatus((current) => ({
+      ...current,
+      bugReport: {
+        tone: result.ok ? 'good' : 'warn',
+        message: result.message,
+      },
+    }))
+    return result.ok
+  }
+
+  const submitFeatureRequest = (body: string) => {
+    const result = submitFeedbackPost({
+      feedbackState,
+      authState,
+      category: 'feature-request',
+      body,
+    })
+    setFeedbackState(result.feedbackState)
+    setAuthState(result.authState)
+    setFeedbackStatus((current) => ({
+      ...current,
+      featureRequest: {
+        tone: result.ok ? 'good' : 'warn',
+        message: result.message,
+      },
+    }))
+    return result.ok
+  }
+
+  const submitReview = (body: string) => {
+    const result = submitFeedbackPost({
+      feedbackState,
+      authState,
+      category: 'review',
+      body,
+    })
+    setFeedbackState(result.feedbackState)
+    setFeedbackStatus((current) => ({
+      ...current,
+      review: {
+        tone: result.ok ? 'good' : 'warn',
+        message: result.message,
+      },
+    }))
+    return result.ok
+  }
+
   const onStageMouseMove = (event: ReactMouseEvent<HTMLCanvasElement>) => {
     if (document.pointerLockElement === canvasRef.current) {
       return
@@ -405,6 +519,13 @@ export const useReactionTrainer = () => {
     snapshot,
     authMessage,
     leaderboards,
+    feedbackPosts: feedbackState.posts,
+    feedbackStatus,
+    feedbackAccess: {
+      isLoggedIn: activeAccount !== null,
+      bugReportLastSubmittedAt: activeAccount?.cooldowns.bugReportAt ?? null,
+      featureRequestLastSubmittedAt: activeAccount?.cooldowns.featureRequestAt ?? null,
+    },
     updateSettings,
     beginSession,
     returnToMenu,
@@ -414,5 +535,8 @@ export const useReactionTrainer = () => {
     login,
     register,
     logout,
+    submitBugReport,
+    submitFeatureRequest,
+    submitReview,
   }
 }

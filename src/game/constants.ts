@@ -82,6 +82,7 @@ export const VIEW_YAW_LIMIT = 0.72
 export const MODE_LABELS: Record<GameMode, string> = {
   standard: 'Peek Practice',
   'door-cross': 'Mid-Door Cross',
+  'round-start': 'Round Start',
   wallbang: 'Wallbang Timing',
   mixed: 'Mixed Rotation',
   accuracy: 'Accuracy Mode',
@@ -252,20 +253,26 @@ export const BEHAVIOR_LABELS: Record<BehaviorId, string> = {
   'shoulder-bait': 'Shoulder Bait',
   'stop-cross': 'Stop Then Continue Cross',
   'crouch-peek': 'Crouch Peek',
+  'round-start': 'Round Start',
   'wallbang-timing-peek': 'Wallbang Timing Peek',
 }
 
-export const PEEK_SELECTIONS: PeekSelection[] = [
+export const POPULAR_PEEK_SELECTIONS: PeekSelection[] = [
   'cross',
-  'mid-hold-peek',
   'jumping-cross',
+  'crouch-peek',
+  'round-start',
+]
+
+export const PEEK_SELECTIONS: PeekSelection[] = [
+  ...POPULAR_PEEK_SELECTIONS,
+  'mid-hold-peek',
   'jiggle-peek',
   'double-jiggle-peek',
   'wide-swing',
   'delayed-wide-swing',
   'shoulder-bait',
   'stop-cross',
-  'crouch-peek',
   'wallbang-timing-peek',
   'mixed',
 ]
@@ -281,6 +288,7 @@ export const PEEK_SELECTION_LABELS: Record<PeekSelection, string> = {
   'shoulder-bait': 'Shoulder Bait',
   'stop-cross': 'Stop Then Continue',
   'crouch-peek': 'Crouch Peek',
+  'round-start': 'Round Start',
   'wallbang-timing-peek': 'Wallbang Timing',
   mixed: 'Mixed / Random',
 }
@@ -299,6 +307,8 @@ export const PEEK_SELECTION_DETAILS: Record<PeekSelection, string> = {
   'shoulder-bait': 'A small shoulder check meant to bait the shot.',
   'stop-cross': 'Starts the cross, short-stops, then continues through.',
   'crouch-peek': 'Low crouch exposure for a smaller read.',
+  'round-start':
+    'A 2 to 4 player round-start lane cross with staggered right-to-left movement, mixed jump-crosses, and rushing bodies.',
   'wallbang-timing-peek': 'Door timing reps that stay valid only through the penetrable mid-door area.',
   mixed:
     'Mixed rotation across the aligned peek library. Randomness can stay on or be switched to a fixed rotation.',
@@ -535,6 +545,8 @@ export const deriveModeFromSelectedPeek = (
     case 'jumping-cross':
     case 'stop-cross':
       return 'door-cross'
+    case 'round-start':
+      return 'round-start'
     case 'wallbang-timing-peek':
       return 'wallbang'
     case 'mixed':

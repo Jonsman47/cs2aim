@@ -34,6 +34,9 @@ function App() {
     snapshot,
     authMessage,
     leaderboards,
+    feedbackPosts,
+    feedbackStatus,
+    feedbackAccess,
     updateSettings,
     beginSession,
     returnToMenu,
@@ -43,6 +46,9 @@ function App() {
     login,
     register,
     logout,
+    submitBugReport,
+    submitFeatureRequest,
+    submitReview,
   } = useReactionTrainer()
 
   const startWithSettings = (nextSettings?: GameSettings) => {
@@ -209,6 +215,9 @@ function App() {
               xp={snapshot.xp}
               authMessage={authMessage}
               leaderboards={leaderboards}
+              feedbackPosts={feedbackPosts}
+              feedbackStatus={feedbackStatus}
+              feedbackAccess={feedbackAccess}
               onSelectWeapon={applyWeaponSelection}
               onSelectPeek={applyPeekSelection}
               onSelectSpeed={applySpeedSelection}
@@ -217,6 +226,9 @@ function App() {
               onLogin={login}
               onRegister={register}
               onLogout={logout}
+              onSubmitBugReport={submitBugReport}
+              onSubmitFeatureRequest={submitFeatureRequest}
+              onSubmitReview={submitReview}
             />
           )}
 

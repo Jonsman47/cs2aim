@@ -31,6 +31,7 @@ const BEHAVIOR_DIFFICULTY: Record<BehaviorId, number> = {
   'shoulder-bait': 9,
   'stop-cross': 6,
   'crouch-peek': 9,
+  'round-start': 10,
   'wallbang-timing-peek': 11,
 }
 

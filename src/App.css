@@ -709,6 +709,7 @@ kbd {
 }
 
 .mode-tile {
+  position: relative;
   display: grid;
   align-content: start;
   gap: 12px;
@@ -737,6 +738,41 @@ kbd {
 .segment-button.is-active {
   background: rgba(137, 244, 205, 0.12);
   border-color: rgba(137, 244, 205, 0.34);
+}
+
+.mode-tile.is-popular {
+  padding-top: 40px;
+  background:
+    linear-gradient(180deg, rgba(109, 198, 114, 0.15), rgba(255, 255, 255, 0.03)),
+    rgba(255, 255, 255, 0.03);
+  border-color: rgba(112, 214, 132, 0.28);
+  box-shadow:
+    0 18px 34px rgba(17, 42, 25, 0.22),
+    inset 0 1px 0 rgba(184, 255, 196, 0.08);
+}
+
+.mode-tile.is-popular.is-active {
+  background:
+    linear-gradient(180deg, rgba(126, 225, 139, 0.22), rgba(137, 244, 205, 0.12)),
+    rgba(255, 255, 255, 0.03);
+  border-color: rgba(137, 244, 205, 0.42);
+}
+
+.mode-popular-badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 112, 112, 0.94), rgba(206, 49, 49, 0.94));
+  color: #fff4f4;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  box-shadow: 0 10px 18px rgba(120, 18, 18, 0.24);
 }
 
 .mode-name {
@@ -1153,12 +1189,135 @@ kbd {
   font: inherit;
 }
 
+.feedback-hub {
+  display: grid;
+  gap: 14px;
+  margin-top: 30px;
+}
+
+.feedback-hub-intro {
+  background:
+    radial-gradient(circle at top right, rgba(126, 204, 255, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015)),
+    rgba(5, 10, 14, 0.72);
+}
+
+.feedback-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.feedback-card {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.feedback-helper {
+  margin: 0;
+  color: rgba(205, 219, 221, 0.76);
+  line-height: 1.55;
+}
+
+.feedback-form {
+  display: grid;
+  gap: 12px;
+}
+
+.feedback-form label {
+  display: grid;
+  gap: 8px;
+  color: rgba(214, 227, 242, 0.84);
+}
+
+.feedback-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 116px;
+  resize: vertical;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  font: inherit;
+}
+
+.feedback-submit-button {
+  justify-self: start;
+}
+
+.feedback-status {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  line-height: 1.5;
+}
+
+.feedback-status-good {
+  background: rgba(142, 240, 203, 0.1);
+  border-color: rgba(142, 240, 203, 0.24);
+  color: #c8f7e6;
+}
+
+.feedback-status-warn {
+  background: rgba(255, 213, 130, 0.08);
+  border-color: rgba(255, 213, 130, 0.2);
+  color: #f5d8a1;
+}
+
+.feedback-post-list {
+  display: grid;
+  gap: 10px;
+  max-height: 320px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.feedback-post {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.feedback-post-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.feedback-post-meta strong,
+.feedback-post-meta span {
+  display: block;
+}
+
+.feedback-post-meta span {
+  color: rgba(205, 219, 221, 0.64);
+  font-size: 0.8rem;
+}
+
+.feedback-post p {
+  margin: 10px 0 0;
+  color: rgba(220, 231, 241, 0.82);
+  line-height: 1.55;
+}
+
 .leaderboard-shell {
   margin-top: 18px;
 }
 
 .leaderboard-filter-grid {
   margin-top: 0;
+}
+
+.leaderboard-refresh-note {
+  margin: 14px 0 0;
+  color: rgba(205, 219, 221, 0.72);
+  line-height: 1.5;
 }
 
 .leaderboard-list {
@@ -1194,6 +1353,45 @@ kbd {
   font-size: 1rem;
   color: #dcecff;
   text-align: right;
+}
+
+.leaderboard-name-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.leaderboard-name-line strong {
+  display: inline-block;
+}
+
+.leaderboard-row.is-admin-highlight {
+  background:
+    radial-gradient(circle at top right, rgba(165, 112, 255, 0.12), transparent 36%),
+    rgba(255, 255, 255, 0.03);
+  border-color: rgba(160, 116, 255, 0.18);
+}
+
+.leaderboard-name-admin {
+  background: linear-gradient(135deg, #f0d7ff 0%, #cf98ff 30%, #9368ff 68%, #d78dff 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 20px rgba(146, 104, 255, 0.16);
+}
+
+.leaderboard-admin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255, 118, 118, 0.95), rgba(194, 44, 44, 0.95));
+  color: #fff4f4;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .leaderboard-rank {
@@ -1315,6 +1513,52 @@ kbd {
 .theme-light .segment-button {
   background: rgba(255, 255, 255, 0.44);
   border-color: rgba(76, 48, 19, 0.09);
+}
+
+.theme-light .mode-tile.is-popular {
+  background:
+    linear-gradient(180deg, rgba(132, 205, 106, 0.22), rgba(255, 255, 255, 0.52)),
+    rgba(255, 255, 255, 0.44);
+  border-color: rgba(86, 129, 43, 0.22);
+}
+
+.theme-light .feedback-hub-intro,
+.theme-light .feedback-post,
+.theme-light .feedback-status,
+.theme-light .leaderboard-row.is-admin-highlight {
+  border-color: rgba(76, 48, 19, 0.12);
+}
+
+.theme-light .feedback-hub-intro,
+.theme-light .feedback-post {
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.theme-light .leaderboard-row.is-admin-highlight {
+  background:
+    radial-gradient(circle at top right, rgba(176, 136, 255, 0.18), transparent 34%),
+    rgba(255, 255, 255, 0.52);
+}
+
+.theme-light .feedback-helper,
+.theme-light .leaderboard-refresh-note {
+  color: rgba(67, 46, 21, 0.72);
+}
+
+.theme-light .feedback-form textarea {
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(76, 48, 19, 0.12);
+  color: #2d2115;
+}
+
+.theme-light .feedback-status-good {
+  background: rgba(121, 197, 132, 0.14);
+  color: #284026;
+}
+
+.theme-light .feedback-status-warn {
+  background: rgba(219, 177, 94, 0.16);
+  color: #5a3a14;
 }
 
 .theme-light .shot-feedback-toast {

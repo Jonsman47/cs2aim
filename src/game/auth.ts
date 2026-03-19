@@ -1,5 +1,6 @@
 import { getXpProgress } from './xp.ts'
 import type {
+  AccountSubmissionCooldowns,
   AccountStats,
   AuthAccount,
   AuthState,
@@ -9,6 +10,7 @@ import type {
 } from './types.ts'
 
 const AUTH_STORAGE_KEY = 'midlane-reaction-auth'
+export const ANONYMOUS_LEADERBOARD_NAME = 'Anonymous'
 
 const sanitizeName = (value: string) => value.trim()
 
@@ -29,6 +31,11 @@ export const createEmptyAccountStats = (): AccountStats => ({
   bestScore: 0,
 })
 
+export const createEmptyAccountSubmissionCooldowns = (): AccountSubmissionCooldowns => ({
+  bugReportAt: null,
+  featureRequestAt: null,
+})
+
 const normalizeStats = (stats: Partial<AccountStats> | undefined): AccountStats => ({
   ...createEmptyAccountStats(),
   ...stats,
@@ -42,6 +49,18 @@ const normalizeStats = (stats: Partial<AccountStats> | undefined): AccountStats 
   fastestReactionMs:
     typeof stats?.fastestReactionMs === 'number' ? stats.fastestReactionMs : null,
   bestScore: Number(stats?.bestScore) || 0,
+})
+
+const normalizeCooldowns = (
+  cooldowns: Partial<AccountSubmissionCooldowns> | undefined,
+): AccountSubmissionCooldowns => ({
+  ...createEmptyAccountSubmissionCooldowns(),
+  bugReportAt:
+    typeof cooldowns?.bugReportAt === 'number' ? cooldowns.bugReportAt : null,
+  featureRequestAt:
+    typeof cooldowns?.featureRequestAt === 'number'
+      ? cooldowns.featureRequestAt
+      : null,
 })
 
 export const LEADERBOARD_CATEGORIES: LeaderboardCategoryOption[] = [
@@ -61,6 +80,11 @@ export const createEmptyAuthState = (): AuthState => ({
   activeUserName: null,
 })
 
+export const getLeaderboardDisplayName = (name: string | null | undefined) => {
+  const normalizedName = typeof name === 'string' ? sanitizeName(name) : ''
+  return normalizedName || ANONYMOUS_LEADERBOARD_NAME
+}
+
 export const loadAuthState = (): AuthState => {
   if (typeof window === 'undefined') {
     return createEmptyAuthState()
@@ -76,10 +100,11 @@ export const loadAuthState = (): AuthState => {
     return {
       accounts: Array.isArray(parsed.accounts)
         ? parsed.accounts.map((account) => ({
-            name: account.name,
-            password: account.password,
+            name: typeof account.name === 'string' ? account.name : '',
+            password: typeof account.password === 'string' ? account.password : '',
             xp: Number(account.xp) || 0,
             stats: normalizeStats(account.stats),
+            cooldowns: normalizeCooldowns(account.cooldowns),
           }))
         : [],
       activeUserName:
@@ -133,6 +158,7 @@ export const registerAccount = (
           password: normalizedPassword,
           xp: 0,
           stats: createEmptyAccountStats(),
+          cooldowns: createEmptyAccountSubmissionCooldowns(),
         },
       ],
       activeUserName: normalizedName,
@@ -202,6 +228,36 @@ export const updateAccountXp = (
   accounts[index] = {
     ...accounts[index],
     xp,
+  }
+
+  return {
+    ...state,
+    accounts,
+  }
+}
+
+export const updateAccountSubmissionCooldown = (
+  state: AuthState,
+  userName: string | null,
+  cooldown: keyof AccountSubmissionCooldowns,
+  submittedAt: number,
+): AuthState => {
+  if (!userName) {
+    return state
+  }
+
+  const index = findAccountIndex(state.accounts, userName)
+  if (index < 0) {
+    return state
+  }
+
+  const accounts = [...state.accounts]
+  accounts[index] = {
+    ...accounts[index],
+    cooldowns: {
+      ...accounts[index].cooldowns,
+      [cooldown]: submittedAt,
+    },
   }
 
   return {
@@ -301,6 +357,8 @@ export const getLeaderboardEntries = (
   category: LeaderboardCategory,
 ): LeaderboardEntry[] => {
   const rows = state.accounts.map((account) => {
+    const displayName = getLeaderboardDisplayName(account.name)
+    const hasAccountIdentity = sanitizeName(account.name).length > 0
     const level = getXpProgress(account.xp).level
     const averageReaction = getAverageReaction(account.stats)
     const accuracy = account.stats.shots > 0 ? (account.stats.kills / account.stats.shots) * 100 : null
@@ -308,7 +366,8 @@ export const getLeaderboardEntries = (
     switch (category) {
       case 'level':
         return {
-          name: account.name,
+          name: displayName,
+          accountName: hasAccountIdentity ? account.name : null,
           value: `Level ${level}`,
           secondaryValue: `${account.xp.toLocaleString()} XP`,
           sortPrimary: level,
@@ -318,7 +377,8 @@ export const getLeaderboardEntries = (
         }
       case 'xp':
         return {
-          name: account.name,
+          name: displayName,
+          accountName: hasAccountIdentity ? account.name : null,
           value: `${account.xp.toLocaleString()} XP`,
           secondaryValue: `Level ${level}`,
           sortPrimary: account.xp,
@@ -328,7 +388,8 @@ export const getLeaderboardEntries = (
         }
       case 'kills':
         return {
-          name: account.name,
+          name: displayName,
+          accountName: hasAccountIdentity ? account.name : null,
           value: `${account.stats.kills.toLocaleString()} kills`,
           secondaryValue: formatAccuracy(account.stats.shots, account.stats.kills),
           sortPrimary: account.stats.kills,
@@ -338,7 +399,8 @@ export const getLeaderboardEntries = (
         }
       case 'average-reaction':
         return {
-          name: account.name,
+          name: displayName,
+          accountName: hasAccountIdentity ? account.name : null,
           value: formatMs(averageReaction),
           secondaryValue: `${account.stats.qualifyingReactionCount.toLocaleString()} qualifying shots`,
           sortPrimary: averageReaction ?? Number.POSITIVE_INFINITY,
@@ -348,7 +410,8 @@ export const getLeaderboardEntries = (
         }
       case 'headshots':
         return {
-          name: account.name,
+          name: displayName,
+          accountName: hasAccountIdentity ? account.name : null,
           value: `${account.stats.headshots.toLocaleString()} headshots`,
           secondaryValue: `${account.stats.kills.toLocaleString()} kills`,
           sortPrimary: account.stats.headshots,
@@ -358,7 +421,8 @@ export const getLeaderboardEntries = (
         }
       case 'wallbangs':
         return {
-          name: account.name,
+          name: displayName,
+          accountName: hasAccountIdentity ? account.name : null,
           value: `${account.stats.wallbangs.toLocaleString()} wallbangs`,
           secondaryValue: `${account.stats.kills.toLocaleString()} kills`,
           sortPrimary: account.stats.wallbangs,
@@ -368,7 +432,8 @@ export const getLeaderboardEntries = (
         }
       case 'best-score':
         return {
-          name: account.name,
+          name: displayName,
+          accountName: hasAccountIdentity ? account.name : null,
           value: formatScore(account.stats.bestScore),
           secondaryValue: `${account.stats.kills.toLocaleString()} kills`,
           sortPrimary: account.stats.bestScore,
@@ -378,7 +443,8 @@ export const getLeaderboardEntries = (
         }
       case 'accuracy':
         return {
-          name: account.name,
+          name: displayName,
+          accountName: hasAccountIdentity ? account.name : null,
           value: formatAccuracy(account.stats.shots, account.stats.kills),
           secondaryValue: `${account.stats.kills.toLocaleString()} / ${account.stats.shots.toLocaleString()} shots`,
           sortPrimary: accuracy ?? Number.NEGATIVE_INFINITY,
@@ -389,7 +455,8 @@ export const getLeaderboardEntries = (
       case 'fastest-reaction':
       default:
         return {
-          name: account.name,
+          name: displayName,
+          accountName: hasAccountIdentity ? account.name : null,
           value: formatMs(account.stats.fastestReactionMs),
           secondaryValue: `${account.stats.headshots.toLocaleString()} headshots`,
           sortPrimary: account.stats.fastestReactionMs ?? Number.POSITIVE_INFINITY,
@@ -414,15 +481,16 @@ export const getLeaderboardEntries = (
       }
 
       return ascending
-        ? right.sortSecondary - left.sortSecondary
+        ? left.sortSecondary - right.sortSecondary
         : right.sortSecondary - left.sortSecondary
     })
 
   return (category === 'average-reaction'
     ? rankedRows.filter((row) => !row.empty)
     : rankedRows)
-    .map(({ name, value, secondaryValue }) => ({
+    .map(({ name, accountName, value, secondaryValue }) => ({
       name,
+      accountName,
       value,
       secondaryValue,
     }))

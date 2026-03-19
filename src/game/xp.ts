@@ -22,6 +22,7 @@ const BEHAVIOR_XP_WEIGHT: Record<BehaviorId, number> = {
   'shoulder-bait': 6,
   'stop-cross': 4,
   'crouch-peek': 6,
+  'round-start': 7,
   'wallbang-timing-peek': 7,
 }
 

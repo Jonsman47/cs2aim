@@ -1,4 +1,5 @@
 import { useLayoutEffect, useState, type FormEvent } from 'react'
+import { FeedbackHub } from './FeedbackHub.tsx'
 import { HotkeyHint } from './HotkeyHint.tsx'
 import { PeekPreviewArt } from './PeekPreviewArt.tsx'
 import { SettingsPanel } from './SettingsPanel.tsx'
@@ -8,6 +9,7 @@ import {
   PEEK_SELECTION_DETAILS,
   PEEK_SELECTION_LABELS,
   PEEK_SELECTIONS,
+  POPULAR_PEEK_SELECTIONS,
   PEEK_SPEED_DETAILS,
   PEEK_SPEED_LABELS,
   PEEK_SPEEDS,
@@ -18,6 +20,7 @@ import {
   formatPeekSelectionLabel,
 } from '../game/constants.ts'
 import type {
+  FeedbackPost,
   GameSettings,
   LeaderboardCategory,
   LeaderboardEntry,
@@ -37,6 +40,17 @@ interface MainMenuProps {
   accountName: string | null
   xp: XpProgress | null
   authMessage: string | null
+  feedbackPosts: FeedbackPost[]
+  feedbackStatus: {
+    bugReport: { tone: 'good' | 'warn'; message: string } | null
+    featureRequest: { tone: 'good' | 'warn'; message: string } | null
+    review: { tone: 'good' | 'warn'; message: string } | null
+  }
+  feedbackAccess: {
+    isLoggedIn: boolean
+    bugReportLastSubmittedAt: number | null
+    featureRequestLastSubmittedAt: number | null
+  }
   leaderboards: Array<{
     id: LeaderboardCategory
     label: string
@@ -50,6 +64,9 @@ interface MainMenuProps {
   onLogin: (name: string, password: string) => void
   onRegister: (name: string, password: string) => void
   onLogout: () => void
+  onSubmitBugReport: (body: string) => boolean
+  onSubmitFeatureRequest: (body: string) => boolean
+  onSubmitReview: (body: string) => boolean
 }
 
 const formatReaction = (value: number | null) =>
@@ -66,6 +83,9 @@ export function MainMenu({
   accountName,
   xp,
   authMessage,
+  feedbackPosts,
+  feedbackStatus,
+  feedbackAccess,
   leaderboards,
   onSelectWeapon,
   onSelectPeek,
@@ -75,6 +95,9 @@ export function MainMenu({
   onLogin,
   onRegister,
   onLogout,
+  onSubmitBugReport,
+  onSubmitFeatureRequest,
+  onSubmitReview,
 }: MainMenuProps) {
   const [activeTab, setActiveTab] = useState<MenuTab>('play')
   const [loginName, setLoginName] = useState('')
@@ -318,19 +341,24 @@ export function MainMenu({
             </div>
 
             <div className="mode-grid">
-              {PEEK_SELECTIONS.map((selectedPeek) => (
-                <button
-                  key={selectedPeek}
-                  className={`mode-tile ${
-                    settings.selectedPeek === selectedPeek ? 'is-active' : ''
-                  }`}
-                  onClick={() => onSelectPeek(selectedPeek)}
-                >
-                  <span className="mode-name">{PEEK_SELECTION_LABELS[selectedPeek]}</span>
-                  <span className="mode-copy">{PEEK_SELECTION_DETAILS[selectedPeek]}</span>
-                  <PeekPreviewArt peek={selectedPeek} />
-                </button>
-              ))}
+              {PEEK_SELECTIONS.map((selectedPeek) => {
+                const isPopular = POPULAR_PEEK_SELECTIONS.includes(selectedPeek)
+
+                return (
+                  <button
+                    key={selectedPeek}
+                    className={`mode-tile ${isPopular ? 'is-popular' : ''} ${
+                      settings.selectedPeek === selectedPeek ? 'is-active' : ''
+                    }`}
+                    onClick={() => onSelectPeek(selectedPeek)}
+                  >
+                    {isPopular && <span className="mode-popular-badge">Popular</span>}
+                    <span className="mode-name">{PEEK_SELECTION_LABELS[selectedPeek]}</span>
+                    <span className="mode-copy">{PEEK_SELECTION_DETAILS[selectedPeek]}</span>
+                    <PeekPreviewArt peek={selectedPeek} />
+                  </button>
+                )
+              })}
             </div>
 
             <div className="subheading-row menu-subheading">
@@ -386,6 +414,16 @@ export function MainMenu({
                 Open Settings <HotkeyHint label={UI_KEYBINDS.toggleSettings.label} />
               </button>
             </div>
+
+            <FeedbackHub
+              accountName={accountName}
+              posts={feedbackPosts}
+              status={feedbackStatus}
+              availability={feedbackAccess}
+              onSubmitBugReport={onSubmitBugReport}
+              onSubmitFeatureRequest={onSubmitFeatureRequest}
+              onSubmitReview={onSubmitReview}
+            />
           </>
         )}
 
@@ -413,18 +451,35 @@ export function MainMenu({
               ))}
             </div>
 
+            <p className="leaderboard-refresh-note">
+              Leaderboards refresh automatically every 30 seconds.
+            </p>
+
             <div className="leaderboard-list">
               {(leaderboards.find((category) => category.id === activeLeaderboard)?.entries ?? []).map(
-                (entry, index) => (
-                  <div key={`${activeLeaderboard}-${entry.name}`} className="leaderboard-row">
-                    <div className="leaderboard-rank">#{index + 1}</div>
-                    <div>
-                      <strong>{entry.name}</strong>
-                      {entry.secondaryValue && <span>{entry.secondaryValue}</span>}
+                (entry, index) => {
+                  const isJonsman =
+                    (entry.accountName ?? entry.name).trim().toLowerCase() === 'jonsman'
+
+                  return (
+                    <div
+                      key={`${activeLeaderboard}-${entry.accountName ?? entry.name}-${index}`}
+                      className={`leaderboard-row ${isJonsman ? 'is-admin-highlight' : ''}`}
+                    >
+                      <div className="leaderboard-rank">#{index + 1}</div>
+                      <div>
+                        <div className="leaderboard-name-line">
+                          <strong className={isJonsman ? 'leaderboard-name-admin' : ''}>
+                            {entry.name}
+                          </strong>
+                          {isJonsman && <span className="leaderboard-admin-badge">Admin</span>}
+                        </div>
+                        {entry.secondaryValue && <span>{entry.secondaryValue}</span>}
+                      </div>
+                      <b>{entry.value}</b>
                     </div>
-                    <b>{entry.value}</b>
-                  </div>
-                ),
+                  )
+                },
               )}
 
               {(leaderboards.find((category) => category.id === activeLeaderboard)?.entries.length ??
