@@ -886,6 +886,215 @@ const validateProgressionPayload = (payload: {
   }
 }
 
+type ValidatedProgressionPayload = NonNullable<
+  ReturnType<typeof validateProgressionPayload>
+>
+
+const resolveProgressionActor = (authState: AuthState) => {
+  if (authState.activeUserName) {
+    const accountId = authState.accounts.find(
+      (account) => account.name === authState.activeUserName,
+    )?.id
+
+    return accountId
+      ? ({
+          actorType: 'account',
+          actorId: accountId,
+        } as const)
+      : null
+  }
+
+  return authState.anonymousProfile.profileId
+    ? ({
+        actorType: 'anonymous',
+        actorId: authState.anonymousProfile.profileId,
+      } as const)
+    : null
+}
+
+const applyProgressionPayload = async (
+  client: PoolClient,
+  actor: {
+    actorType: 'account' | 'anonymous'
+    actorId: string
+  },
+  payload: ValidatedProgressionPayload,
+) => {
+  const duplicate = await client.query(
+    'SELECT 1 FROM progression_events WHERE id = $1 LIMIT 1',
+    [payload.eventId],
+  )
+
+  if (duplicate.rowCount !== 0) {
+    return
+  }
+
+  const cumulativeReactionDelta = payload.reactionTimes.reduce(
+    (total, reactionTime) => total + reactionTime,
+    0,
+  )
+  const qualifyingReactionTimes = payload.reactionTimes.filter(
+    (reactionTime) => reactionTime < 1000,
+  )
+  const qualifyingReactionDelta = qualifyingReactionTimes.reduce(
+    (total, reactionTime) => total + reactionTime,
+    0,
+  )
+  const qualifyingReactionCountDelta = qualifyingReactionTimes.length
+  const fastestReactionCandidate =
+    payload.reactionTimes.length > 0 ? Math.min(...payload.reactionTimes) : null
+  const tableName = actor.actorType === 'account' ? 'accounts' : 'anonymous_profiles'
+  const idColumn = actor.actorType === 'account' ? 'id' : 'profile_id'
+
+  await client.query(
+    `INSERT INTO progression_events (
+      id,
+      actor_type,
+      actor_id,
+      xp_delta,
+      shots_delta,
+      kills_delta,
+      headshots_delta,
+      wallbangs_delta,
+      cumulative_reaction_delta,
+      qualifying_reaction_delta,
+      qualifying_reaction_count_delta,
+      fastest_reaction_candidate,
+      best_score_candidate
+    ) VALUES (
+      $1,
+      $2,
+      $3,
+      $4,
+      $5,
+      $6,
+      $7,
+      $8,
+      $9,
+      $10,
+      $11,
+      $12,
+      $13
+    )`,
+    [
+      payload.eventId,
+      actor.actorType,
+      actor.actorId,
+      payload.xpDelta,
+      payload.shotsDelta,
+      payload.killsDelta,
+      payload.headshotsDelta,
+      payload.wallbangsDelta,
+      cumulativeReactionDelta,
+      qualifyingReactionDelta,
+      qualifyingReactionCountDelta,
+      fastestReactionCandidate,
+      payload.score,
+    ],
+  )
+
+  await client.query(
+    `UPDATE ${tableName}
+     SET xp = xp + $2,
+         stats = jsonb_build_object(
+           'shots', COALESCE((stats->>'shots')::int, 0) + $3,
+           'kills', COALESCE((stats->>'kills')::int, 0) + $4,
+           'headshots', COALESCE((stats->>'headshots')::int, 0) + $5,
+           'wallbangs', COALESCE((stats->>'wallbangs')::int, 0) + $6,
+           'cumulativeReactionMs', COALESCE((stats->>'cumulativeReactionMs')::numeric, 0) + $7,
+           'qualifyingReactionMs', COALESCE((stats->>'qualifyingReactionMs')::numeric, 0) + $8,
+           'qualifyingReactionCount', COALESCE((stats->>'qualifyingReactionCount')::int, 0) + $9,
+           'fastestReactionMs',
+             CASE
+               WHEN $10::numeric IS NULL THEN stats->'fastestReactionMs'
+               WHEN (stats->>'fastestReactionMs') IS NULL THEN to_jsonb($10::numeric)
+               ELSE to_jsonb(LEAST((stats->>'fastestReactionMs')::numeric, $10::numeric))
+             END,
+           'bestScore', GREATEST(COALESCE((stats->>'bestScore')::int, 0), COALESCE($11, 0))
+         ),
+         updated_at = now()
+     WHERE ${idColumn} = $1`,
+    [
+      actor.actorId,
+      payload.xpDelta,
+      payload.shotsDelta,
+      payload.killsDelta,
+      payload.headshotsDelta,
+      payload.wallbangsDelta,
+      cumulativeReactionDelta,
+      qualifyingReactionDelta,
+      qualifyingReactionCountDelta,
+      fastestReactionCandidate,
+      payload.score,
+    ],
+  )
+}
+
+export const syncProgressionEvents = async (
+  sessionToken: string | null,
+  payload: {
+    events: Array<{
+      eventId: string
+      xpDelta: number
+      shotsDelta: number
+      killsDelta: number
+      headshotsDelta: number
+      wallbangsDelta: number
+      reactionTimes: number[]
+      score: number | null
+    }>
+    reason?: string | null
+  },
+) => {
+  if (!Array.isArray(payload.events) || payload.events.length === 0) {
+    throw new Error('Invalid progression payload.')
+  }
+
+  const validatedEvents = payload.events
+    .map((event) => validateProgressionPayload(event))
+    .filter(
+      (event): event is ValidatedProgressionPayload => event !== null,
+    )
+
+  if (validatedEvents.length !== payload.events.length) {
+    console.warn('[progression-sync] rejected invalid payload batch')
+    throw new Error('Invalid progression payload.')
+  }
+
+  const client = await pool.connect()
+
+  try {
+    await client.query('BEGIN')
+    const ensured = await ensureSessionState(client, sessionToken, undefined)
+    const actor = resolveProgressionActor(ensured.authState)
+
+    if (!actor) {
+      throw new Error('No active progression actor found.')
+    }
+
+    for (const event of validatedEvents) {
+      await applyProgressionPayload(client, actor, event)
+    }
+
+    const authState = await buildAuthStateForSession(client, ensured.session)
+    await client.query('COMMIT')
+    console.info(
+      `[progression-sync] saved ${validatedEvents.length} event(s) for ${actor.actorType}:${actor.actorId}` +
+        (payload.reason ? ` (${payload.reason})` : ''),
+    )
+    return {
+      sessionToken: ensured.token,
+      authState,
+      acceptedEventIds: validatedEvents.map((event) => event.eventId),
+    }
+  } catch (error) {
+    await client.query('ROLLBACK')
+    throw error
+  } finally {
+    client.release()
+  }
+}
+
 export const registerWithServer = async (
   sessionToken: string | null,
   request: {
@@ -1269,145 +1478,13 @@ export const syncProgressionEvent = async (
     score: number | null
   },
 ) => {
-  const validated = validateProgressionPayload(payload)
-  if (!validated) {
-    throw new Error('Invalid progression payload.')
-  }
-
-  const client = await pool.connect()
-
-  try {
-    await client.query('BEGIN')
-    const ensured = await ensureSessionState(client, sessionToken, undefined)
-    const actorType = ensured.authState.activeUserName ? 'account' : 'anonymous'
-    const actorId = ensured.authState.activeUserName
-      ? ensured.authState.accounts.find(
-          (account) => account.name === ensured.authState.activeUserName,
-        )?.id
-      : ensured.authState.anonymousProfile.profileId
-
-    if (!actorId) {
-      throw new Error('No active progression actor found.')
-    }
-
-    const duplicate = await client.query(
-      'SELECT 1 FROM progression_events WHERE id = $1 LIMIT 1',
-      [validated.eventId],
-    )
-
-    if (duplicate.rowCount === 0) {
-      const cumulativeReactionDelta = validated.reactionTimes.reduce(
-        (total, reactionTime) => total + reactionTime,
-        0,
-      )
-      const qualifyingReactionTimes = validated.reactionTimes.filter(
-        (reactionTime) => reactionTime < 1000,
-      )
-      const qualifyingReactionDelta = qualifyingReactionTimes.reduce(
-        (total, reactionTime) => total + reactionTime,
-        0,
-      )
-      const qualifyingReactionCountDelta = qualifyingReactionTimes.length
-      const fastestReactionCandidate =
-        validated.reactionTimes.length > 0 ? Math.min(...validated.reactionTimes) : null
-      const tableName = actorType === 'account' ? 'accounts' : 'anonymous_profiles'
-      const idColumn = actorType === 'account' ? 'id' : 'profile_id'
-
-      await client.query(
-        `INSERT INTO progression_events (
-          id,
-          actor_type,
-          actor_id,
-          xp_delta,
-          shots_delta,
-          kills_delta,
-          headshots_delta,
-          wallbangs_delta,
-          cumulative_reaction_delta,
-          qualifying_reaction_delta,
-          qualifying_reaction_count_delta,
-          fastest_reaction_candidate,
-          best_score_candidate
-        ) VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          $7,
-          $8,
-          $9,
-          $10,
-          $11,
-          $12,
-          $13
-        )`,
-        [
-          validated.eventId,
-          actorType,
-          actorId,
-          validated.xpDelta,
-          validated.shotsDelta,
-          validated.killsDelta,
-          validated.headshotsDelta,
-          validated.wallbangsDelta,
-          cumulativeReactionDelta,
-          qualifyingReactionDelta,
-          qualifyingReactionCountDelta,
-          fastestReactionCandidate,
-          validated.score,
-        ],
-      )
-
-      await client.query(
-        `UPDATE ${tableName}
-         SET xp = xp + $2,
-             stats = jsonb_build_object(
-               'shots', COALESCE((stats->>'shots')::int, 0) + $3,
-               'kills', COALESCE((stats->>'kills')::int, 0) + $4,
-               'headshots', COALESCE((stats->>'headshots')::int, 0) + $5,
-               'wallbangs', COALESCE((stats->>'wallbangs')::int, 0) + $6,
-               'cumulativeReactionMs', COALESCE((stats->>'cumulativeReactionMs')::numeric, 0) + $7,
-               'qualifyingReactionMs', COALESCE((stats->>'qualifyingReactionMs')::numeric, 0) + $8,
-               'qualifyingReactionCount', COALESCE((stats->>'qualifyingReactionCount')::int, 0) + $9,
-               'fastestReactionMs',
-                 CASE
-                   WHEN $10::numeric IS NULL THEN stats->'fastestReactionMs'
-                   WHEN (stats->>'fastestReactionMs') IS NULL THEN to_jsonb($10::numeric)
-                   ELSE to_jsonb(LEAST((stats->>'fastestReactionMs')::numeric, $10::numeric))
-                 END,
-               'bestScore', GREATEST(COALESCE((stats->>'bestScore')::int, 0), COALESCE($11, 0))
-             ),
-             updated_at = now()
-         WHERE ${idColumn} = $1`,
-        [
-          actorId,
-          validated.xpDelta,
-          validated.shotsDelta,
-          validated.killsDelta,
-          validated.headshotsDelta,
-          validated.wallbangsDelta,
-          cumulativeReactionDelta,
-          qualifyingReactionDelta,
-          qualifyingReactionCountDelta,
-          fastestReactionCandidate,
-          validated.score,
-        ],
-      )
-    }
-
-    const authState = await buildAuthStateForSession(client, ensured.session)
-    await client.query('COMMIT')
-    return {
-      sessionToken: ensured.token,
-      authState,
-    }
-  } catch (error) {
-    await client.query('ROLLBACK')
-    throw error
-  } finally {
-    client.release()
+  const result = await syncProgressionEvents(sessionToken, {
+    events: [payload],
+    reason: 'single-event',
+  })
+  return {
+    sessionToken: result.sessionToken,
+    authState: result.authState,
   }
 }
 

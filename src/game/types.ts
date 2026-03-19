@@ -637,8 +637,18 @@ export interface ProgressionSyncRequest {
   score: number | null
 }
 
+export interface ProgressionBatchSyncRequest {
+  events: ProgressionSyncRequest[]
+  reason?: string
+}
+
 export interface ProgressionSyncResponse {
   authState: AuthState
+}
+
+export interface ProgressionBatchSyncResponse {
+  authState: AuthState
+  acceptedEventIds: string[]
 }
 
 export interface CommunitySnapshotResponse {

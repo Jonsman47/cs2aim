@@ -1,5 +1,6 @@
 import {
   startTransition,
+  useCallback,
   useEffect,
   useEffectEvent,
   useRef,
@@ -26,6 +27,7 @@ import {
 } from './admin.ts'
 import {
   bootstrapSessionFromServer,
+  sendProgressionBatchBeacon,
   fetchCommunityFromServer,
   fetchLeaderboardsFromServer,
   loginOnServer,
@@ -35,7 +37,7 @@ import {
   syncAdminAuthStateToServer,
   syncAdminFeedbackStateToServer,
   syncAdminStateToServer,
-  syncProgressionToServer,
+  syncProgressionBatchToServer,
 } from './api.ts'
 import {
   LEADERBOARD_CATEGORIES,
@@ -58,6 +60,12 @@ import {
   loadFeedbackState,
   saveFeedbackState,
 } from './feedback.ts'
+import {
+  loadProgressionQueue,
+  saveProgressionQueue,
+  stripQueuedProgressionEvent,
+  type QueuedProgressionEvent,
+} from './progressionSync.ts'
 import {
   applySettings,
   cycleScopeLevel,
@@ -96,7 +104,9 @@ const loadedState = loadPersistentState()
 const loadedLegacyAuthState = loadAuthState()
 const loadedCachedFeedbackState = loadFeedbackState()
 const loadedCachedAdminState = loadAdminState()
+const loadedProgressionQueue = loadProgressionQueue()
 const LEGACY_ANONYMOUS_MIGRATED_KEY = 'midlane-reaction-legacy-anonymous-migrated'
+const PROGRESSION_AUTOSAVE_MS = 10_000
 
 const normalizeLookupName = (value: string | null | undefined) =>
   value?.trim().toLowerCase() ?? ''
@@ -116,6 +126,32 @@ const hasMeaningfulStats = (stats: AccountStats) =>
   stats.qualifyingReactionCount > 0 ||
   stats.fastestReactionMs !== null ||
   stats.bestScore > 0
+
+const applyQueuedProgressionToState = (
+  state: AuthState,
+  event: QueuedProgressionEvent,
+): AuthState => {
+  const currentProfile = getProgressionProfile(state)
+  return updateAccountProgress(state, getActiveAccount(state)?.name ?? null, {
+    xp: currentProfile.xp + event.xpDelta,
+    shotsDelta: event.shotsDelta,
+    killsDelta: event.killsDelta,
+    headshotsDelta: event.headshotsDelta,
+    wallbangsDelta: event.wallbangsDelta,
+    reactionTime: event.reactionTimes[event.reactionTimes.length - 1] ?? null,
+    reactionTimes: event.reactionTimes,
+    score: event.score,
+  })
+}
+
+const overlayQueuedProgression = (
+  state: AuthState,
+  queue: QueuedProgressionEvent[],
+): AuthState =>
+  queue.reduce(
+    (currentState, event) => applyQueuedProgressionToState(currentState, event),
+    state,
+  )
 
 const mergeStats = (base: AccountStats, bonus: AccountStats): AccountStats => ({
   shots: base.shots + bonus.shots,
@@ -230,6 +266,9 @@ export const useReactionTrainer = () => {
   })
   const [snapshot, setSnapshot] = useState(() => getSnapshot(runtimeRef.current))
   const lastProgressSnapshotRef = useRef(getSnapshot(runtimeRef.current))
+  const progressionQueueRef = useRef<QueuedProgressionEvent[]>(loadedProgressionQueue)
+  const progressionFlushPromiseRef = useRef<Promise<boolean> | null>(null)
+  const lastPhaseRef = useRef(snapshot.phase)
   const activeAccount = getActiveAccount(authState)
   const progressionProfile = getProgressionProfile(authState)
   const isAdmin = isAdminAccountName(activeAccount?.name ?? null)
@@ -239,6 +278,125 @@ export const useReactionTrainer = () => {
       setSnapshot(getSnapshot(runtimeRef.current))
     })
   }
+
+  const persistProgressionQueue = useCallback((queue: QueuedProgressionEvent[]) => {
+    progressionQueueRef.current = queue
+    saveProgressionQueue(queue)
+  }, [])
+
+  const queueProgressionEvent = useCallback((event: QueuedProgressionEvent) => {
+    persistProgressionQueue([...progressionQueueRef.current, event].slice(-250))
+  }, [persistProgressionQueue])
+
+  const flushProgressionQueue = useCallback(
+    async ({
+      reason,
+      refreshLeaderboards = true,
+    }: {
+      reason: string
+      refreshLeaderboards?: boolean
+    }) => {
+      if (progressionQueueRef.current.length === 0) {
+        return true
+      }
+
+      if (!initialServerSyncDoneRef.current) {
+        return false
+      }
+
+      if (progressionFlushPromiseRef.current) {
+        return progressionFlushPromiseRef.current
+      }
+
+      const requestPromise = (async () => {
+        const queuedEvents = progressionQueueRef.current
+        if (queuedEvents.length === 0) {
+          return true
+        }
+
+        try {
+          const result = await syncProgressionBatchToServer({
+            events: queuedEvents.map(stripQueuedProgressionEvent),
+            reason,
+          })
+          const acceptedEventIds = new Set(result.acceptedEventIds)
+          const remainingQueue = progressionQueueRef.current.filter(
+            (event) => !acceptedEventIds.has(event.eventId),
+          )
+          const optimisticAuthState = overlayQueuedProgression(
+            result.authState,
+            remainingQueue,
+          )
+
+          persistProgressionQueue(remainingQueue)
+          startTransition(() => {
+            setAuthState(optimisticAuthState)
+          })
+
+          if (refreshLeaderboards) {
+            const nextLeaderboards = await fetchLeaderboardsFromServer()
+            startTransition(() => {
+              setLeaderboards(nextLeaderboards)
+            })
+          }
+
+          return true
+        } catch (error) {
+          console.warn(`[progression-sync] flush failed during ${reason}`, error)
+          return false
+        } finally {
+          progressionFlushPromiseRef.current = null
+        }
+      })()
+
+      progressionFlushPromiseRef.current = requestPromise
+      return requestPromise
+    },
+    [persistProgressionQueue],
+  )
+
+  const flushProgressionQueueWithBeacon = useCallback((reason: string) => {
+    if (progressionQueueRef.current.length === 0) {
+      return
+    }
+
+    const sent = sendProgressionBatchBeacon({
+      events: progressionQueueRef.current.map(stripQueuedProgressionEvent),
+      reason,
+    })
+    if (!sent) {
+      console.warn(`[progression-sync] sendBeacon failed during ${reason}`)
+    }
+  }, [])
+
+  const ensureProgressionReadyForAuthMutation = useCallback(
+    async (intentLabel: string) => {
+      if (progressionQueueRef.current.length === 0) {
+        return true
+      }
+
+      if (!initialServerSyncDoneRef.current) {
+        setAuthMessage(
+          'The shared profile is still connecting. Please try again in a moment so your current progress can be saved safely.',
+        )
+        return false
+      }
+
+      const flushed = await flushProgressionQueue({
+        reason: intentLabel,
+        refreshLeaderboards: false,
+      })
+
+      if (!flushed) {
+        setAuthMessage(
+          'Current progression could not be saved to the server yet. Please try again after the connection recovers.',
+        )
+      }
+
+      return flushed
+    },
+    [flushProgressionQueue],
+  )
 
   const refreshSharedState = async ({
     migrateLegacyAnonymous = false,
@@ -266,8 +424,12 @@ export const useReactionTrainer = () => {
       }
 
       setAdminRuntimeState(community.adminState)
+      const optimisticAuthState = overlayQueuedProgression(
+        session.authState,
+        progressionQueueRef.current,
+      )
       startTransition(() => {
-        setAuthState(session.authState)
+        setAuthState(optimisticAuthState)
         setFeedbackState(community.feedbackState)
         setAdminState(community.adminState)
         setLeaderboards(nextLeaderboards)
@@ -316,10 +478,22 @@ export const useReactionTrainer = () => {
   }, [adminState])
 
   useEffect(() => {
-    void refreshSharedState({
-      migrateLegacyAnonymous: true,
-      preserveAuthMessage: true,
-    })
+    let cancelled = false
+
+    const bootstrapSharedState = async () => {
+      await refreshSharedState({
+        migrateLegacyAnonymous: true,
+        preserveAuthMessage: true,
+      })
+
+      if (!cancelled && progressionQueueRef.current.length > 0) {
+        void flushProgressionQueue({
+          reason: 'post-bootstrap',
+        })
+      }
+    }
+
+    void bootstrapSharedState()
     const interval = window.setInterval(
       () => {
         void refreshSharedState({
@@ -329,9 +503,83 @@ export const useReactionTrainer = () => {
       adminState.leaderboardAutoRefreshSeconds * 1000,
     )
     return () => {
+      cancelled = true
       window.clearInterval(interval)
     }
-  }, [adminState.leaderboardAutoRefreshSeconds])
+  }, [adminState.leaderboardAutoRefreshSeconds, flushProgressionQueue])
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (progressionQueueRef.current.length === 0) {
+        return
+      }
+
+      void flushProgressionQueue({
+        reason: 'autosave',
+      })
+    }, PROGRESSION_AUTOSAVE_MS)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [flushProgressionQueue])
+
+  useEffect(() => {
+    const nextPhase = snapshot.phase
+    const previousPhase = lastPhaseRef.current
+    lastPhaseRef.current = nextPhase
+
+    if (
+      previousPhase !== nextPhase &&
+      (nextPhase === 'cooldown' ||
+        nextPhase === 'result' ||
+        nextPhase === 'summary' ||
+        nextPhase === 'menu') &&
+      progressionQueueRef.current.length > 0
+    ) {
+      void flushProgressionQueue({
+        reason: `phase-${nextPhase}`,
+      })
+    }
+  }, [snapshot.phase, flushProgressionQueue])
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'hidden') {
+        return
+      }
+
+      void flushProgressionQueue({
+        reason: 'visibility-hidden',
+        refreshLeaderboards: false,
+      })
+      flushProgressionQueueWithBeacon('visibility-hidden-beacon')
+    }
+
+    const onPageHide = () => {
+      flushProgressionQueueWithBeacon('pagehide')
+    }
+
+    const onOnline = () => {
+      if (progressionQueueRef.current.length === 0) {
+        return
+      }
+
+      void flushProgressionQueue({
+        reason: 'network-restored',
+      })
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('pagehide', onPageHide)
+    window.addEventListener('online', onOnline)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('pagehide', onPageHide)
+      window.removeEventListener('online', onOnline)
+    }
+  }, [flushProgressionQueue, flushProgressionQueueWithBeacon])
 
   useEffect(() => {
     const nextProfile = getProgressionProfile(authState)
@@ -415,10 +663,11 @@ export const useReactionTrainer = () => {
       }),
     )
 
-    void syncProgressionToServer({
+    queueProgressionEvent({
       eventId: `progress-${currentSnapshot.persistenceVersion}-${Date.now()}-${Math.random()
         .toString(36)
         .slice(2, 8)}`,
+      queuedAt: Date.now(),
       xpDelta,
       shotsDelta,
       killsDelta,
@@ -427,21 +676,23 @@ export const useReactionTrainer = () => {
       reactionTimes,
       score,
     })
-      .then(({ authState: nextAuthState }) => {
-        startTransition(() => {
-          setAuthState(nextAuthState)
-        })
-        return fetchLeaderboardsFromServer()
+
+    if (
+      currentSnapshot.phase === 'cooldown' ||
+      currentSnapshot.phase === 'result' ||
+      currentSnapshot.phase === 'summary' ||
+      currentSnapshot.phase === 'menu'
+    ) {
+      void flushProgressionQueue({
+        reason: `progress-${currentSnapshot.phase}`,
       })
-      .then((nextLeaderboards) => {
-        startTransition(() => {
-          setLeaderboards(nextLeaderboards)
-        })
-      })
-      .catch(() => {
-        // Keep local play responsive if the network misses a sync.
-      })
-  }, [progressionProfile.xp, snapshot.persistenceVersion])
+    }
+  }, [
+    progressionProfile.xp,
+    queueProgressionEvent,
+    snapshot.persistenceVersion,
+    flushProgressionQueue,
+  ])
 
   useEffect(() => {
     if (
@@ -586,44 +837,56 @@ export const useReactionTrainer = () => {
   }
 
   const login = (name: string, password: string) => {
-    void loginOnServer({
-      name,
-      password,
-      legacyAccount: findLegacyAccount(name, password),
+    void (async () => {
+      const ready = await ensureProgressionReadyForAuthMutation('before-login')
+      if (!ready) {
+        return
+      }
+
+      const result = await loginOnServer({
+        name,
+        password,
+        legacyAccount: findLegacyAccount(name, password),
+      })
+      applyAuthUpdate(result.authState, result.message)
+      await refreshSharedState({ preserveAuthMessage: true })
+    })().catch((error) => {
+      setAuthMessage(error instanceof Error ? error.message : 'Login failed.')
     })
-      .then((result) => {
-        applyAuthUpdate(result.authState, result.message)
-        return refreshSharedState({ preserveAuthMessage: true })
-      })
-      .catch((error) => {
-        setAuthMessage(error instanceof Error ? error.message : 'Login failed.')
-      })
   }
 
   const register = (name: string, password: string) => {
-    void registerOnServer({
-      name,
-      password,
-      legacyAccount: findLegacyAccount(name, password),
+    void (async () => {
+      const ready = await ensureProgressionReadyForAuthMutation('before-register')
+      if (!ready) {
+        return
+      }
+
+      const result = await registerOnServer({
+        name,
+        password,
+        legacyAccount: findLegacyAccount(name, password),
+      })
+      applyAuthUpdate(result.authState, result.message)
+      await refreshSharedState({ preserveAuthMessage: true })
+    })().catch((error) => {
+      setAuthMessage(error instanceof Error ? error.message : 'Register failed.')
     })
-      .then((result) => {
-        applyAuthUpdate(result.authState, result.message)
-        return refreshSharedState({ preserveAuthMessage: true })
-      })
-      .catch((error) => {
-        setAuthMessage(error instanceof Error ? error.message : 'Register failed.')
-      })
   }
 
   const logout = () => {
-    void logoutOnServer()
-      .then((result) => {
-        applyAuthUpdate(result.authState, result.message)
-        return refreshSharedState({ preserveAuthMessage: true })
-      })
-      .catch((error) => {
-        setAuthMessage(error instanceof Error ? error.message : 'Logout failed.')
-      })
+    void (async () => {
+      const ready = await ensureProgressionReadyForAuthMutation('before-logout')
+      if (!ready) {
+        return
+      }
+
+      const result = await logoutOnServer()
+      applyAuthUpdate(result.authState, result.message)
+      await refreshSharedState({ preserveAuthMessage: true })
+    })().catch((error) => {
+      setAuthMessage(error instanceof Error ? error.message : 'Logout failed.')
+    })
   }
 
   interface AdminMutation {

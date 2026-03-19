@@ -6,6 +6,8 @@ import type {
   FeedbackMutationRequest,
   FeedbackMutationResponse,
   FeedbackState,
+  ProgressionBatchSyncRequest,
+  ProgressionBatchSyncResponse,
   LeaderboardSnapshot,
   ProgressionSyncRequest,
   ProgressionSyncResponse,
@@ -26,9 +28,22 @@ const apiRequest = async <T>(
     ...init,
   })
 
-  const payload = (await response.json()) as T & { message?: string }
+  const raw = await response.text()
+  let payload = {} as T & { message?: string }
+
+  if (raw) {
+    try {
+      payload = JSON.parse(raw) as T & { message?: string }
+    } catch {
+      payload = { message: raw } as T & { message?: string }
+    }
+  }
+
   if (!response.ok) {
-    throw new Error(payload.message ?? 'Request failed.')
+    throw new Error(
+      payload.message ??
+        (raw || 'Request failed.'),
+    )
   }
 
   return payload
@@ -92,6 +107,27 @@ export const syncProgressionToServer = (payload: ProgressionSyncRequest) =>
     method: 'POST',
     body: JSON.stringify(payload),
   })
+
+export const syncProgressionBatchToServer = (
+  payload: ProgressionBatchSyncRequest,
+  init?: RequestInit,
+) =>
+  apiRequest<ProgressionBatchSyncResponse>('/api/progression/batch', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    ...init,
+  })
+
+export const sendProgressionBatchBeacon = (payload: ProgressionBatchSyncRequest) => {
+  if (typeof navigator === 'undefined') {
+    return false
+  }
+
+  const body = new Blob([JSON.stringify(payload)], {
+    type: 'application/json',
+  })
+  return navigator.sendBeacon('/api/progression/batch', body)
+}
 
 export const submitFeedbackToServer = (payload: FeedbackMutationRequest) =>
   apiRequest<FeedbackMutationResponse>('/api/feedback', {

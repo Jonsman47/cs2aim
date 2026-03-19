@@ -15,6 +15,7 @@ import {
   syncAdminFeedbackStateToServer,
   syncAdminStateToServer,
   syncProgressionEvent,
+  syncProgressionEvents,
 } from './store.ts'
 
 const SESSION_COOKIE_NAME = 'midlane_session'
@@ -126,6 +127,17 @@ app.post(
   '/api/progression/sync',
   route(async (req, res) => {
     const payload = await syncProgressionEvent(
+      getSessionToken(req.headers.cookie),
+      req.body,
+    )
+    respondWithSession(res, payload)
+  }),
+)
+
+app.post(
+  '/api/progression/batch',
+  route(async (req, res) => {
+    const payload = await syncProgressionEvents(
       getSessionToken(req.headers.cookie),
       req.body,
     )

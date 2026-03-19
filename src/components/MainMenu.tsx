@@ -322,18 +322,18 @@ export function MainMenu({
           <section className="panel">
             <div className="panel-header">
               <div>
-                <p className="eyebrow">Local Profile</p>
+                <p className="eyebrow">Guest Profile</p>
                 <h2>Anonymous Progression</h2>
               </div>
             </div>
             <p className="menu-copy">
-              Anonymous play still saves XP, level, and combat stats on this device. If you
-              register from this profile, that progression transfers into the new account
-              automatically.
+              Anonymous play still saves XP, level, and combat stats to the shared server.
+              If you register from this profile, that server-side progression transfers into
+              the new account automatically.
             </p>
             <div className="menu-meta account-meta">
               <div>
-                <span>Local Name</span>
+                <span>Guest Name</span>
                 <strong>{accountName}</strong>
               </div>
               <div>
