@@ -205,12 +205,12 @@ export function MainMenu({
           <div className="menu-meta account-meta">
             <div>
               <span>Logged In As</span>
-              <div className="leaderboard-name-line">
-                <strong className={isAdmin ? 'leaderboard-name-admin' : ''}>
+              <div className="profile-name-line">
+                <strong className={isAdmin ? 'jonsman-name-accent' : ''}>
                   {loggedInAccountName}
                 </strong>
                 {isAdmin && adminBadgeVisible && (
-                  <span className="leaderboard-admin-badge">Admin</span>
+                  <span className="admin-badge">Admin</span>
                 )}
               </div>
             </div>
@@ -510,10 +510,10 @@ export function MainMenu({
                 <span>Progression</span>
                 {accountName && xp ? (
                   <div className="progress-readout">
-                    <div className="leaderboard-name-line">
-                      <strong className={isAdmin ? 'leaderboard-name-admin' : ''}>{accountName}</strong>
+                    <div className="profile-name-line">
+                      <strong className={isAdmin ? 'jonsman-name-accent' : ''}>{accountName}</strong>
                       {isAdmin && adminBadgeVisible && (
-                        <span className="leaderboard-admin-badge">Admin</span>
+                        <span className="admin-badge">Admin</span>
                       )}
                     </div>
                     <span className="progress-readout-detail">

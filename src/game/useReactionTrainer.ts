@@ -614,23 +614,12 @@ export const useReactionTrainer = () => {
               : post,
           ),
         }
-        const replaceName = (list: string[]) =>
-          list.map((name) =>
-            normalizeLookupName(name) === normalizeLookupName(account.name) ? nextName : name,
-          )
-        const nextAdminState: AdminState = {
-          ...adminState,
-          leaderboardHighlightNames: replaceName(adminState.leaderboardHighlightNames),
-          leaderboardPinnedNames: replaceName(adminState.leaderboardPinnedNames),
-        }
-
         return applyAdminMutation({
           message: `${account.name} renamed to ${nextName}.`,
           auditAction: 'Renamed user',
           auditDetail: `${account.name} -> ${nextName}`,
           authState: nextAuthState,
           feedbackState: nextFeedbackState,
-          adminState: nextAdminState,
         })
       }
       case 'force-rename': {
@@ -704,52 +693,8 @@ export const useReactionTrainer = () => {
           },
         })
       }
-      case 'add-badge':
-      case 'remove-badge': {
-        if (!account) {
-          return applyAdminMutation({
-            tone: 'warn',
-            message: 'User not found.',
-            auditAction: 'Badge action failed',
-          })
-        }
-
-        const badgeId = `${action.badgeId ?? ''}`.trim()
-        if (!badgeId) {
-          return applyAdminMutation({
-            tone: 'warn',
-            message: 'Choose a badge first.',
-            auditAction: 'Badge action failed',
-          })
-        }
-
-        const nextAccounts = [...authState.accounts]
-        nextAccounts[accountIndex] = {
-          ...account,
-          badges:
-            action.type === 'add-badge'
-              ? Array.from(new Set([...account.badges, badgeId]))
-              : account.badges.filter((id) => id !== badgeId),
-        }
-
-        return applyAdminMutation({
-          message:
-            action.type === 'add-badge'
-              ? `Badge assigned to ${account.name}.`
-              : `Badge removed from ${account.name}.`,
-          auditAction:
-            action.type === 'add-badge' ? 'Assigned badge' : 'Removed badge',
-          auditDetail: `${badgeId} / ${account.name}`,
-          authState: {
-            ...authState,
-            accounts: nextAccounts,
-          },
-        })
-      }
-      case 'feature':
       case 'suspend':
-      case 'ban':
-      case 'hide-user': {
+      case 'ban': {
         if (!account) {
           return applyAdminMutation({
             tone: 'warn',
@@ -761,15 +706,9 @@ export const useReactionTrainer = () => {
         const nextAccounts = [...authState.accounts]
         nextAccounts[accountIndex] = {
           ...account,
-          featured:
-            action.type === 'feature' ? Boolean(action.value) : account.featured,
           suspended:
             action.type === 'suspend' ? Boolean(action.value) : account.suspended,
           banned: action.type === 'ban' ? Boolean(action.value) : account.banned,
-          hiddenFromLeaderboard:
-            action.type === 'hide-user'
-              ? Boolean(action.value)
-              : account.hiddenFromLeaderboard,
         }
 
         return applyAdminMutation({
@@ -816,7 +755,6 @@ export const useReactionTrainer = () => {
           },
         })
       }
-      case 'set-name-color':
       case 'set-rate-limit': {
         if (!account) {
           return applyAdminMutation({
@@ -829,14 +767,8 @@ export const useReactionTrainer = () => {
         const nextAccounts = [...authState.accounts]
         nextAccounts[accountIndex] = {
           ...account,
-          nameColor:
-            action.type === 'set-name-color'
-              ? `${action.value ?? ''}`.trim() || null
-              : account.nameColor,
           strictFeedbackCooldownMinutes:
-            action.type === 'set-rate-limit'
-              ? Math.max(0, Number(action.value) || 0) || null
-              : account.strictFeedbackCooldownMinutes,
+            Math.max(0, Number(action.value) || 0) || null,
         }
 
         return applyAdminMutation({
@@ -936,397 +868,11 @@ export const useReactionTrainer = () => {
           },
         })
       }
-      case 'force-refresh': {
-        return applyAdminMutation({
-          message: 'Leaderboard refresh forced.',
-          auditAction: 'Forced leaderboard refresh',
-          adminState: {
-            ...adminState,
-            leaderboardRefreshNonce: adminState.leaderboardRefreshNonce + 1,
-          },
-        })
-      }
       default:
         return applyAdminMutation({
           tone: 'warn',
           message: 'Unknown user admin action.',
           auditAction: 'Unknown user admin action',
-        })
-    }
-  }
-
-  const runBadgeAdminAction = (action: { type: string; [key: string]: unknown }) => {
-    switch (action.type) {
-      case 'create': {
-        const name = `${action.name ?? ''}`.trim()
-        if (!name) {
-          return applyAdminMutation({
-            tone: 'warn',
-            message: 'Badge name is required.',
-            auditAction: 'Create badge failed',
-          })
-        }
-
-        return applyAdminMutation({
-          message: `${name} badge created.`,
-          auditAction: 'Created badge',
-          adminState: {
-            ...adminState,
-            badges: [
-              {
-                id: `${action.id ?? name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
-                name,
-                color: `${action.color ?? '#72f0c4'}`,
-                style:
-                  action.style === 'outline' || action.style === 'glow'
-                    ? action.style
-                    : 'solid',
-              },
-              ...adminState.badges,
-            ],
-          },
-        })
-      }
-      case 'update': {
-        const badgeId = `${action.badgeId ?? ''}`.trim()
-        const badgeIndex = adminState.badges.findIndex((badge) => badge.id === badgeId)
-        if (badgeIndex < 0) {
-          return applyAdminMutation({
-            tone: 'warn',
-            message: 'Badge not found.',
-            auditAction: 'Update badge failed',
-          })
-        }
-
-        const nextBadges = [...adminState.badges]
-        nextBadges[badgeIndex] = {
-          ...nextBadges[badgeIndex],
-          name: `${action.name ?? nextBadges[badgeIndex].name}`.trim() || nextBadges[badgeIndex].name,
-          color: `${action.color ?? nextBadges[badgeIndex].color}`.trim() || nextBadges[badgeIndex].color,
-          style:
-            action.style === 'outline' || action.style === 'glow' || action.style === 'solid'
-              ? action.style
-              : nextBadges[badgeIndex].style,
-        }
-
-        return applyAdminMutation({
-          message: `${nextBadges[badgeIndex].name} badge updated.`,
-          auditAction: 'Updated badge',
-          adminState: {
-            ...adminState,
-            badges: nextBadges,
-          },
-        })
-      }
-      case 'delete': {
-        const badgeId = `${action.badgeId ?? ''}`.trim()
-        const nextAuthState: AuthState = {
-          ...authState,
-          accounts: authState.accounts.map((account) => ({
-            ...account,
-            badges: account.badges.filter((id) => id !== badgeId),
-          })),
-        }
-
-        return applyAdminMutation({
-          message: 'Badge deleted.',
-          auditAction: 'Deleted badge',
-          adminState: {
-            ...adminState,
-            badges: adminState.badges.filter((badge) => badge.id !== badgeId),
-          },
-          authState: nextAuthState,
-        })
-      }
-      case 'toggle-admin-visibility':
-        return applyAdminMutation({
-          message: `Admin badge visibility ${action.value ? 'enabled' : 'disabled'}.`,
-          auditAction: 'Toggled admin badge visibility',
-          adminState: {
-            ...adminState,
-            adminBadgeVisible: Boolean(action.value),
-          },
-        })
-      default:
-        return applyAdminMutation({
-          tone: 'warn',
-          message: 'Unknown badge admin action.',
-          auditAction: 'Unknown badge admin action',
-        })
-    }
-  }
-
-  const runLeaderboardAdminAction = (action: { type: string; [key: string]: unknown }) => {
-    switch (action.type) {
-      case 'add-bot': {
-        const name = `${action.name ?? ''}`.trim()
-        if (!name) {
-          return applyAdminMutation({
-            tone: 'warn',
-            message: 'Bot name is required.',
-            auditAction: 'Add bot failed',
-          })
-        }
-
-        const kills = Math.max(0, Number(action.kills) || 0)
-        const headshots = Math.max(0, Number(action.headshots) || 0)
-        const wallbangs = Math.max(0, Number(action.wallbangs) || 0)
-        const averageReactionMs = Math.max(120, Number(action.averageReactionMs) || 420)
-        const xp = Math.max(0, Number(action.xp) || 0)
-
-        const nextBot: LeaderboardBot = {
-          id: `bot-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          name,
-          xp,
-          stats: createBotStatsFromAverage(kills, headshots, wallbangs, averageReactionMs),
-          locked: Boolean(action.locked),
-          featured: Boolean(action.featured),
-          hidden: false,
-          nameColor: `${action.nameColor ?? ''}`.trim() || null,
-          theme: `${action.theme ?? ''}`.trim() || null,
-        }
-
-        return applyAdminMutation({
-          message: `${name} bot added to the leaderboard.`,
-          auditAction: 'Added leaderboard bot',
-          adminState: {
-            ...adminState,
-            bots: [nextBot, ...adminState.bots],
-            leaderboardRefreshNonce: adminState.leaderboardRefreshNonce + 1,
-          },
-        })
-      }
-      case 'bulk-add-bots': {
-        const count = Math.max(1, Math.min(12, Number(action.count) || 3))
-        const theme = `${action.theme ?? 'pros'}`
-        const presets: Record<string, string[]> = {
-          pros: ['NiKo', 'm0NESY', 'ropz', 'broky', 'ZywOo', 's1mple'],
-          midlane: ['Door Demon', 'Cross King', 'Lane Lord', 'Mid Ghost', 'HS Farmer'],
-          meme: ['Peeker.exe', 'Door Gremlin', 'Wallbang Wizard', 'Lag Monster', 'Meme Cross'],
-        }
-        const names = presets[theme] ?? presets.pros
-        const nextBots = Array.from({ length: count }, (_, index) => {
-          const name = `${names[index % names.length]} ${Math.floor(Math.random() * 90 + 10)}`
-          const baseKills = Math.floor(Math.random() * 600 + 180)
-          const averageReactionMs = Math.floor(Math.random() * 220 + 180)
-
-          return {
-            id: `bot-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 6)}`,
-            name,
-            xp: baseKills * 90,
-            stats: createBotStatsFromAverage(
-              baseKills,
-              Math.floor(baseKills * 0.48),
-              Math.floor(baseKills * 0.18),
-              averageReactionMs,
-            ),
-            locked: Boolean(action.locked),
-            featured: false,
-            hidden: false,
-            nameColor: theme === 'meme' ? '#ffd466' : null,
-            theme,
-          } satisfies LeaderboardBot
-        })
-
-        return applyAdminMutation({
-          message: `${count} ${theme} bots added.`,
-          auditAction: 'Bulk added leaderboard bots',
-          adminState: {
-            ...adminState,
-            bots: [...nextBots, ...adminState.bots],
-            leaderboardRefreshNonce: adminState.leaderboardRefreshNonce + 1,
-          },
-        })
-      }
-      case 'update-bot': {
-        const botId = `${action.botId ?? ''}`.trim()
-        const botIndex = adminState.bots.findIndex((bot) => bot.id === botId)
-        if (botIndex < 0) {
-          return applyAdminMutation({
-            tone: 'warn',
-            message: 'Bot not found.',
-            auditAction: 'Update bot failed',
-          })
-        }
-
-        const current = adminState.bots[botIndex]
-        const kills = Math.max(0, Number(action.kills) || current.stats.kills)
-        const headshots = Math.max(0, Number(action.headshots) || current.stats.headshots)
-        const wallbangs = Math.max(0, Number(action.wallbangs) || current.stats.wallbangs)
-        const averageReactionMs = Math.max(
-          120,
-          Number(action.averageReactionMs) ||
-            (current.stats.qualifyingReactionCount > 0
-              ? current.stats.qualifyingReactionMs / current.stats.qualifyingReactionCount
-              : 420),
-        )
-        const nextBots = [...adminState.bots]
-        nextBots[botIndex] = {
-          ...current,
-          name: `${action.name ?? current.name}`.trim() || current.name,
-          xp: Math.max(0, Number(action.xp) || current.xp),
-          stats: createBotStatsFromAverage(kills, headshots, wallbangs, averageReactionMs),
-          featured: action.featured === undefined ? current.featured : Boolean(action.featured),
-          hidden: action.hidden === undefined ? current.hidden : Boolean(action.hidden),
-          locked: action.locked === undefined ? current.locked : Boolean(action.locked),
-          nameColor:
-            action.nameColor === undefined
-              ? current.nameColor
-              : `${action.nameColor ?? ''}`.trim() || null,
-          theme:
-            action.theme === undefined ? current.theme : `${action.theme ?? ''}`.trim() || null,
-        }
-
-        return applyAdminMutation({
-          message: `${nextBots[botIndex].name} updated.`,
-          auditAction: 'Updated leaderboard bot',
-          adminState: {
-            ...adminState,
-            bots: nextBots,
-            leaderboardRefreshNonce: adminState.leaderboardRefreshNonce + 1,
-          },
-        })
-      }
-      case 'remove-bot':
-      case 'clear-bots': {
-        const nextBots =
-          action.type === 'clear-bots'
-            ? []
-            : adminState.bots.filter((bot) => bot.id !== `${action.botId ?? ''}`)
-        return applyAdminMutation({
-          message:
-            action.type === 'clear-bots'
-              ? 'All leaderboard bots removed.'
-              : 'Bot removed.',
-          auditAction:
-            action.type === 'clear-bots'
-              ? 'Cleared leaderboard bots'
-              : 'Removed leaderboard bot',
-          adminState: {
-            ...adminState,
-            bots: nextBots,
-            leaderboardRefreshNonce: adminState.leaderboardRefreshNonce + 1,
-          },
-        })
-      }
-      case 'randomize-bots': {
-        const nextBots = adminState.bots.map((bot) =>
-          bot.locked
-            ? bot
-            : {
-                ...bot,
-                xp: Math.max(0, bot.xp + Math.floor(Math.random() * 900 - 300)),
-                stats: createBotStatsFromAverage(
-                  Math.max(20, bot.stats.kills + Math.floor(Math.random() * 80 - 20)),
-                  Math.max(10, bot.stats.headshots + Math.floor(Math.random() * 40 - 12)),
-                  Math.max(4, bot.stats.wallbangs + Math.floor(Math.random() * 20 - 6)),
-                  Math.max(
-                    130,
-                    Math.floor(
-                      (bot.stats.qualifyingReactionCount > 0
-                        ? bot.stats.qualifyingReactionMs / bot.stats.qualifyingReactionCount
-                        : 360) +
-                        Math.random() * 120 -
-                        60,
-                    ),
-                  ),
-                ),
-              },
-        )
-
-        return applyAdminMutation({
-          message: 'Unlocked bots were randomized.',
-          auditAction: 'Randomized leaderboard bots',
-          adminState: {
-            ...adminState,
-            bots: nextBots,
-            leaderboardRefreshNonce: adminState.leaderboardRefreshNonce + 1,
-          },
-        })
-      }
-      case 'power-shift': {
-        const factor = action.value === 'weaker' ? 0.82 : 1.18
-        const nextBots = adminState.bots.map((bot) => ({
-          ...bot,
-          xp: Math.max(0, Math.round(bot.xp * factor)),
-          stats: createBotStatsFromAverage(
-            Math.max(10, Math.round(bot.stats.kills * factor)),
-            Math.max(4, Math.round(bot.stats.headshots * factor)),
-            Math.max(2, Math.round(bot.stats.wallbangs * factor)),
-            Math.max(
-              120,
-              Math.round(
-                ((bot.stats.qualifyingReactionCount > 0
-                  ? bot.stats.qualifyingReactionMs / bot.stats.qualifyingReactionCount
-                  : 320) *
-                  (action.value === 'weaker' ? 1.08 : 0.92)),
-              ),
-            ),
-          ),
-        }))
-
-        return applyAdminMutation({
-          message: `Bots shifted ${action.value === 'weaker' ? 'weaker' : 'stronger'}.`,
-          auditAction: 'Adjusted bot strength',
-          adminState: {
-            ...adminState,
-            bots: nextBots,
-            leaderboardRefreshNonce: adminState.leaderboardRefreshNonce + 1,
-          },
-        })
-      }
-      case 'set-refresh-interval':
-        return applyAdminMutation({
-          message: `Leaderboard refresh interval set to ${Math.max(5, Number(action.value) || 30)} seconds.`,
-          auditAction: 'Updated leaderboard auto refresh interval',
-          adminState: {
-            ...adminState,
-            leaderboardAutoRefreshSeconds: Math.max(5, Number(action.value) || 30),
-          },
-        })
-      case 'toggle-highlight':
-      case 'toggle-pin': {
-        const listName =
-          action.type === 'toggle-highlight'
-            ? 'leaderboardHighlightNames'
-            : 'leaderboardPinnedNames'
-        const value = `${action.value ?? ''}`.trim()
-        if (!value) {
-          return applyAdminMutation({
-            tone: 'warn',
-            message: 'Select a username first.',
-            auditAction: 'Leaderboard highlight failed',
-          })
-        }
-
-        const currentList = adminState[listName]
-        const exists = currentList.some(
-          (name) => normalizeLookupName(name) === normalizeLookupName(value),
-        )
-        const nextList = exists
-          ? currentList.filter(
-              (name) => normalizeLookupName(name) !== normalizeLookupName(value),
-            )
-          : [...currentList, value]
-
-        return applyAdminMutation({
-          message: `${value} ${exists ? 'removed from' : 'added to'} ${action.type === 'toggle-highlight' ? 'highlights' : 'pins'}.`,
-          auditAction:
-            action.type === 'toggle-highlight'
-              ? 'Updated highlighted leaderboard names'
-              : 'Updated pinned leaderboard names',
-          adminState: {
-            ...adminState,
-            [listName]: nextList,
-            leaderboardRefreshNonce: adminState.leaderboardRefreshNonce + 1,
-          } as AdminState,
-        })
-      }
-      default:
-        return applyAdminMutation({
-          tone: 'warn',
-          message: 'Unknown leaderboard admin action.',
-          auditAction: 'Unknown leaderboard admin action',
         })
     }
   }
@@ -1442,56 +988,11 @@ export const useReactionTrainer = () => {
             stats: createEmptyAccountStats(),
           },
         }
-        const nextBots = adminState.bots.map((bot) => ({
-          ...bot,
-          xp: 0,
-          stats: createEmptyAccountStats(),
-        }))
 
         return applyAdminMutation({
           message: 'All progression was reset.',
           auditAction: 'Reset all progression',
           authState: nextAuthState,
-          adminState: {
-            ...adminState,
-            bots: nextBots,
-            leaderboardRefreshNonce: adminState.leaderboardRefreshNonce + 1,
-          },
-        })
-      }
-      case 'reset-leaderboard-stats': {
-        const stripLeaderboardStats = (stats: AccountStats) => ({
-          ...stats,
-          kills: 0,
-          headshots: 0,
-          wallbangs: 0,
-          shots: 0,
-          bestScore: 0,
-        })
-        const nextAuthState: AuthState = {
-          ...authState,
-          accounts: authState.accounts.map((account) => ({
-            ...account,
-            stats: stripLeaderboardStats(account.stats),
-          })),
-          anonymousProfile: {
-            ...authState.anonymousProfile,
-            stats: stripLeaderboardStats(authState.anonymousProfile.stats),
-          },
-        }
-
-        return applyAdminMutation({
-          message: 'Leaderboard stats were reset while preserving levels.',
-          auditAction: 'Reset leaderboard stats',
-          authState: nextAuthState,
-          adminState: {
-            ...adminState,
-            bots: adminState.bots.map((bot) => ({
-              ...bot,
-              stats: stripLeaderboardStats(bot.stats),
-            })),
-            leaderboardRefreshNonce: adminState.leaderboardRefreshNonce + 1,
-          },
         })
       }
       case 'reset-reaction-stats': {
@@ -1511,14 +1012,6 @@ export const useReactionTrainer = () => {
           message: 'Reaction-time stats were reset.',
           auditAction: 'Reset reaction stats',
           authState: nextAuthState,
-          adminState: {
-            ...adminState,
-            bots: adminState.bots.map((bot) => ({
-              ...bot,
-              stats: clearReactionStats(bot.stats),
-            })),
-            leaderboardRefreshNonce: adminState.leaderboardRefreshNonce + 1,
-          },
         })
       }
       default:
@@ -2376,7 +1869,6 @@ export const useReactionTrainer = () => {
     ...(authState.anonymousProfile.xp > 0 || hasMeaningfulStats(authState.anonymousProfile.stats)
       ? [authState.anonymousProfile.stats]
       : []),
-    ...adminState.bots.filter((bot) => !bot.hidden).map((bot) => bot.stats),
   ]
   const totalShots = allStatsSources.reduce((sum, stats) => sum + stats.shots, 0)
   const totalKills = allStatsSources.reduce((sum, stats) => sum + stats.kills, 0)
@@ -2399,15 +1891,6 @@ export const useReactionTrainer = () => {
   const mostUsedWeapon =
     Object.entries(snapshot.lifetime.weaponUsage).sort((left, right) => right[1] - left[1])[0]?.[0] ??
     'awp'
-  const leaderboardExport = JSON.stringify(
-    leaderboards.map((category) => ({
-      id: category.id,
-      label: category.label,
-      entries: category.entries,
-    })),
-    null,
-    2,
-  )
   const adminPanelData = isAdmin
     ? {
         status: adminStatus,
@@ -2420,7 +1903,6 @@ export const useReactionTrainer = () => {
         storageOverview,
         exports: {
           siteConfig: JSON.stringify(adminState, null, 2),
-          leaderboard: leaderboardExport,
           settings: JSON.stringify(settings, null, 2),
         },
         dashboard: {
@@ -2429,8 +1911,7 @@ export const useReactionTrainer = () => {
             (authState.anonymousProfile.xp > 0 ||
             hasMeaningfulStats(authState.anonymousProfile.stats)
               ? 1
-              : 0) +
-            adminState.bots.filter((bot) => !bot.hidden).length,
+              : 0),
           totalRegisteredAccounts: authState.accounts.length,
           totalAnonymousPlayers:
             authState.anonymousProfile.xp > 0 ||
@@ -2451,12 +1932,10 @@ export const useReactionTrainer = () => {
           latestFeatureRequests: feedbackState.posts
             .filter((post) => post.category === 'feature-request')
             .slice(0, 5),
-          siteActivitySummary: `${snapshot.history.length} local sessions, ${feedbackState.posts.length} total posts, ${adminState.bots.length} configured bots.`,
+          siteActivitySummary: `${snapshot.history.length} local sessions, ${feedbackState.posts.length} total posts, browser-only save.`,
         },
         actions: {
           runUserAdminAction,
-          runBadgeAdminAction,
-          runLeaderboardAdminAction,
           runProgressionAdminAction,
           runModeAdminAction,
           runVisualAdminAction,
@@ -2480,7 +1959,6 @@ export const useReactionTrainer = () => {
     modeOptions,
     modeShells: adminState.modeShells,
     weaponOptions,
-    leaderboardRefreshSeconds: adminState.leaderboardAutoRefreshSeconds,
     announcements: activeAnnouncements,
     bannerText:
       adminState.fakeAnnouncementEnabled && adminState.fakeAnnouncementText.trim()
@@ -2501,7 +1979,6 @@ export const useReactionTrainer = () => {
       fakeGlobalChallenge: adminState.fakeGlobalChallenge,
       jonsmanWasHereEnabled: adminState.jonsmanWasHereEnabled,
     },
-    leaderboards,
     feedbackPosts: feedbackState.posts,
     feedbackStatus,
     feedbackAccess: {

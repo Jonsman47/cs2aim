@@ -1,7 +1,7 @@
 import { getAdminRuntimeState } from './admin.js'
 import {
   getActiveAccount,
-  getLeaderboardDisplayName,
+  getProfileDisplayName,
   updateAccountSubmissionCooldown,
 } from './auth.js'
 import type {
@@ -138,7 +138,7 @@ const buildFeedbackPost = (
   category,
   body,
   createdAt: now,
-  authorName: accountName ? getLeaderboardDisplayName(accountName) : 'Guest',
+  authorName: accountName ? getProfileDisplayName(accountName) : 'Guest',
   accountName,
   status: 'open',
   pinned: false,

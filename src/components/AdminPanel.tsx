@@ -123,14 +123,14 @@ export function AdminPanel({ panel }: AdminPanelProps) {
         <div>
           <p className="eyebrow">Local Admin Controls</p>
           <h2>
-            <span className="leaderboard-name-admin">Jonsman</span> Admin Panel
+            <span className="jonsman-name-accent">Jonsman</span> Admin Panel
           </h2>
         </div>
-        <span className="leaderboard-admin-badge">Admin</span>
+        <span className="admin-badge">Admin</span>
       </div>
 
       <p className="menu-copy">
-        This panel now manages only local browser data. Shared profile sync, server saving, and
+        This panel now manages only local browser data. Backend syncing, shared profiles, and
         leaderboard tools are gone.
       </p>
 

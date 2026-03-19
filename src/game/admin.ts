@@ -7,12 +7,9 @@ import {
   WEAPON_SELECTIONS,
 } from './constants.js'
 import type {
-  AccountStats,
   AdminState,
-  BadgeDefinition,
   GraphicsQualityId,
   HomepageNotice,
-  LeaderboardBot,
   ModeAdminConfig,
   PeekSelection,
   PeekSpeedId,
@@ -30,18 +27,6 @@ const createId = (prefix: string) =>
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max)
-
-const createEmptyStats = (): AccountStats => ({
-  shots: 0,
-  kills: 0,
-  headshots: 0,
-  wallbangs: 0,
-  cumulativeReactionMs: 0,
-  qualifyingReactionMs: 0,
-  qualifyingReactionCount: 0,
-  fastestReactionMs: null,
-  bestScore: 0,
-})
 
 const createDefaultModeConfigs = (): Record<PeekSelection, ModeAdminConfig> =>
   Object.fromEntries(
@@ -105,30 +90,8 @@ const createDefaultWeaponBonuses = () =>
     number
   >
 
-const DEFAULT_BADGES: BadgeDefinition[] = [
-  {
-    id: 'admin',
-    name: 'Admin',
-    color: '#c15cff',
-    style: 'glow',
-  },
-  {
-    id: 'featured',
-    name: 'Featured',
-    color: '#6fd684',
-    style: 'solid',
-  },
-  {
-    id: 'certified-aimer',
-    name: 'Certified Aimer',
-    color: '#ffd466',
-    style: 'glow',
-  },
-]
-
 export const createDefaultAdminState = (): AdminState => ({
   adminBadgeVisible: true,
-  leaderboardAutoRefreshSeconds: 30,
   announcementBannerText: '',
   featuredMessage: '',
   homepageNotices: [],
@@ -163,10 +126,6 @@ export const createDefaultAdminState = (): AdminState => ({
   experimentalModesEnabled: false,
   blockedWords: ['slur', 'hateword'],
   spamProtectionEnabled: true,
-  leaderboardHighlightNames: [],
-  leaderboardPinnedNames: [],
-  badges: DEFAULT_BADGES,
-  bots: [],
   fakeAnnouncementEnabled: false,
   fakeAnnouncementText: 'Totally real breaking news from Jonsman.',
   rainbowModeId: null,
@@ -177,44 +136,6 @@ export const createDefaultAdminState = (): AdminState => ({
   footerTrollText: '',
   jonsmanWasHereEnabled: false,
   auditLog: [],
-  leaderboardRefreshNonce: 0,
-})
-
-const normalizeStats = (stats: Partial<AccountStats> | undefined): AccountStats => ({
-  ...createEmptyStats(),
-  ...stats,
-  shots: Number(stats?.shots) || 0,
-  kills: Number(stats?.kills) || 0,
-  headshots: Number(stats?.headshots) || 0,
-  wallbangs: Number(stats?.wallbangs) || 0,
-  cumulativeReactionMs: Number(stats?.cumulativeReactionMs) || 0,
-  qualifyingReactionMs: Number(stats?.qualifyingReactionMs) || 0,
-  qualifyingReactionCount: Number(stats?.qualifyingReactionCount) || 0,
-  fastestReactionMs:
-    typeof stats?.fastestReactionMs === 'number' ? stats.fastestReactionMs : null,
-  bestScore: Number(stats?.bestScore) || 0,
-})
-
-const normalizeBadge = (badge: Partial<BadgeDefinition> | undefined): BadgeDefinition => ({
-  id: typeof badge?.id === 'string' && badge.id ? badge.id : createId('badge'),
-  name: typeof badge?.name === 'string' && badge.name ? badge.name : 'Badge',
-  color: typeof badge?.color === 'string' && badge.color ? badge.color : '#72f0c4',
-  style:
-    badge?.style === 'outline' || badge?.style === 'glow' || badge?.style === 'solid'
-      ? badge.style
-      : 'solid',
-})
-
-const normalizeBot = (bot: Partial<LeaderboardBot> | undefined): LeaderboardBot => ({
-  id: typeof bot?.id === 'string' && bot.id ? bot.id : createId('bot'),
-  name: typeof bot?.name === 'string' && bot.name ? bot.name : 'Bot',
-  xp: Number(bot?.xp) || 0,
-  stats: normalizeStats(bot?.stats),
-  locked: Boolean(bot?.locked),
-  featured: Boolean(bot?.featured),
-  hidden: Boolean(bot?.hidden),
-  nameColor: typeof bot?.nameColor === 'string' && bot.nameColor ? bot.nameColor : null,
-  theme: typeof bot?.theme === 'string' && bot.theme ? bot.theme : null,
 })
 
 const normalizeModeConfigs = (
@@ -368,12 +289,6 @@ export const normalizeAdminState = (
             typeof announcement.expiresAt === 'number' ? announcement.expiresAt : null,
         }))
       : defaults.temporaryAnnouncements,
-    badges: Array.isArray(state?.badges)
-      ? state.badges.map((badge) => normalizeBadge(badge))
-      : defaults.badges,
-    bots: Array.isArray(state?.bots)
-      ? state.bots.map((bot) => normalizeBot(bot))
-      : defaults.bots,
     modeConfigs: normalizeModeConfigs(state?.modeConfigs),
     modeShells: Array.isArray(state?.modeShells)
       ? state.modeShells.map((shell) => ({
@@ -458,16 +373,6 @@ export const normalizeAdminState = (
       : defaults.blockedWords,
     spamProtectionEnabled:
       state?.spamProtectionEnabled ?? defaults.spamProtectionEnabled,
-    leaderboardHighlightNames: Array.isArray(state?.leaderboardHighlightNames)
-      ? state.leaderboardHighlightNames.filter(
-          (name): name is string => typeof name === 'string' && name.trim().length > 0,
-        )
-      : defaults.leaderboardHighlightNames,
-    leaderboardPinnedNames: Array.isArray(state?.leaderboardPinnedNames)
-      ? state.leaderboardPinnedNames.filter(
-          (name): name is string => typeof name === 'string' && name.trim().length > 0,
-        )
-      : defaults.leaderboardPinnedNames,
     announcementBannerText:
       typeof state?.announcementBannerText === 'string'
         ? state.announcementBannerText
@@ -507,11 +412,6 @@ export const normalizeAdminState = (
         : defaults.madeByJonsmanStyle,
     jonsmanThemeEnabled: state?.jonsmanThemeEnabled ?? defaults.jonsmanThemeEnabled,
     adminBadgeVisible: state?.adminBadgeVisible ?? defaults.adminBadgeVisible,
-    leaderboardAutoRefreshSeconds: clamp(
-      Number(state?.leaderboardAutoRefreshSeconds) || defaults.leaderboardAutoRefreshSeconds,
-      5,
-      300,
-    ),
     fakeAnnouncementEnabled:
       state?.fakeAnnouncementEnabled ?? defaults.fakeAnnouncementEnabled,
     fakeAnnouncementText:
@@ -554,7 +454,6 @@ export const normalizeAdminState = (
           }))
           .slice(0, 120)
       : defaults.auditLog,
-    leaderboardRefreshNonce: Number(state?.leaderboardRefreshNonce) || 0,
   }
 }
 

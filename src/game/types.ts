@@ -43,7 +43,6 @@ export type GraphicsQualityId =
   | 'low'
   | 'very-low'
 
-export type BadgeStyle = 'solid' | 'outline' | 'glow'
 export type SeasonalTheme = 'off' | 'spring' | 'ember' | 'frost'
 export type PreviewVariant = 'default' | 'scan' | 'ghost' | 'warm' | 'blueprint'
 
@@ -348,13 +347,9 @@ export interface AuthAccount {
   xp: number
   stats: AccountStats
   cooldowns: AccountSubmissionCooldowns
-  badges: string[]
-  featured: boolean
   suspended: boolean
   banned: boolean
-  hiddenFromLeaderboard: boolean
   strictFeedbackCooldownMinutes: number | null
-  nameColor: string | null
   adminNotes: string[]
 }
 
@@ -364,7 +359,6 @@ export interface AnonymousProfile {
   xp: number
   stats: AccountStats
   alias: string | null
-  hiddenFromLeaderboard: boolean
   adminNotes: string[]
 }
 
@@ -406,67 +400,6 @@ export interface FeedbackPost {
 
 export interface FeedbackState {
   posts: FeedbackPost[]
-}
-
-export type LeaderboardCategory =
-  | 'level'
-  | 'xp'
-  | 'kills'
-  | 'average-reaction'
-  | 'headshots'
-  | 'wallbangs'
-  | 'best-score'
-  | 'accuracy'
-  | 'fastest-reaction'
-
-export interface LeaderboardCategoryOption {
-  id: LeaderboardCategory
-  label: string
-}
-
-export interface LeaderboardEntry {
-  name: string
-  accountName: string | null
-  value: string
-  secondaryValue?: string
-  badges?: LeaderboardBadge[]
-  nameColor?: string | null
-  featured?: boolean
-  pinned?: boolean
-  admin?: boolean
-  bot?: boolean
-}
-
-export interface LeaderboardSnapshot {
-  id: LeaderboardCategory
-  label: string
-  entries: LeaderboardEntry[]
-}
-
-export interface LeaderboardBadge {
-  id: string
-  label: string
-  color: string
-  style: BadgeStyle
-}
-
-export interface BadgeDefinition {
-  id: string
-  name: string
-  color: string
-  style: BadgeStyle
-}
-
-export interface LeaderboardBot {
-  id: string
-  name: string
-  xp: number
-  stats: AccountStats
-  locked: boolean
-  featured: boolean
-  hidden: boolean
-  nameColor: string | null
-  theme: string | null
 }
 
 export interface AdminAnnouncement {
@@ -525,7 +458,6 @@ export interface AdminAuditEntry {
 
 export interface AdminState {
   adminBadgeVisible: boolean
-  leaderboardAutoRefreshSeconds: number
   announcementBannerText: string
   featuredMessage: string
   homepageNotices: HomepageNotice[]
@@ -560,10 +492,6 @@ export interface AdminState {
   experimentalModesEnabled: boolean
   blockedWords: string[]
   spamProtectionEnabled: boolean
-  leaderboardHighlightNames: string[]
-  leaderboardPinnedNames: string[]
-  badges: BadgeDefinition[]
-  bots: LeaderboardBot[]
   fakeAnnouncementEnabled: boolean
   fakeAnnouncementText: string
   rainbowModeId: PeekSelection | null
@@ -574,7 +502,6 @@ export interface AdminState {
   footerTrollText: string
   jonsmanWasHereEnabled: boolean
   auditLog: AdminAuditEntry[]
-  leaderboardRefreshNonce: number
 }
 
 export interface GameSnapshot {
@@ -603,80 +530,4 @@ export interface GameSnapshot {
   favoriteWeapon: WeaponMode
   averageShotTimeMs: number | null
   persistenceVersion: number
-}
-
-export interface SessionBootstrapRequest {
-  legacyAnonymousProfile?: AnonymousProfile | null
-}
-
-export interface SessionBootstrapResponse {
-  authState: AuthState
-  authMessage: string | null
-}
-
-export interface AuthMutationRequest {
-  name: string
-  password: string
-  legacyAccount?: AuthAccount | null
-}
-
-export interface AuthMutationResponse {
-  ok: boolean
-  message: string
-  authState: AuthState
-}
-
-export interface ProgressionSyncRequest {
-  eventId: string
-  xpDelta: number
-  shotsDelta: number
-  killsDelta: number
-  headshotsDelta: number
-  wallbangsDelta: number
-  reactionTimes: number[]
-  score: number | null
-}
-
-export interface ProgressionBatchSyncRequest {
-  events: ProgressionSyncRequest[]
-  reason?: string
-}
-
-export interface ProgressionSyncResponse {
-  authState: AuthState
-}
-
-export interface ProgressionBatchSyncResponse {
-  authState: AuthState
-  acceptedEventIds: string[]
-}
-
-export interface CommunitySnapshotResponse {
-  adminState: AdminState
-  feedbackState: FeedbackState
-}
-
-export interface FeedbackMutationRequest {
-  category: FeedbackCategory
-  body: string
-}
-
-export interface FeedbackMutationResponse {
-  ok: boolean
-  message: string
-  feedbackState: FeedbackState
-  authState: AuthState
-  remainingMs: number
-}
-
-export interface AdminAuthSyncRequest {
-  authState: AuthState
-}
-
-export interface AdminFeedbackSyncRequest {
-  feedbackState: FeedbackState
-}
-
-export interface AdminStateSyncRequest {
-  adminState: AdminState
 }

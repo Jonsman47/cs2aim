@@ -137,12 +137,12 @@ function FeedbackColumn({
                 <strong>{post.authorName}</strong>
                 <span>{formatPostedAt(post.createdAt)}</span>
               </div>
-              <div className="leaderboard-name-line">
+              <div className="profile-name-line">
                 {post.pinned && (
-                  <span className="leaderboard-badge leaderboard-badge-outline">Pinned</span>
+                  <span className="status-badge status-badge-outline">Pinned</span>
                 )}
                 {post.status !== 'open' && (
-                  <span className="leaderboard-badge leaderboard-badge-solid">{post.status}</span>
+                  <span className="status-badge status-badge-solid">{post.status}</span>
                 )}
               </div>
               <p>{post.body}</p>
