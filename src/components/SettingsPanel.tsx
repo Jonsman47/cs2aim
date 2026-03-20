@@ -2,6 +2,7 @@ import { CrosshairPreview } from './CrosshairPreview.js'
 import { HotkeyHint } from './HotkeyHint.js'
 import {
   CROSSHAIR_COLOR_PRESETS,
+  ENEMY_COLOR_PRESETS,
   GRAPHICS_QUALITY_DETAILS,
   GRAPHICS_QUALITY_LABELS,
   GRAPHICS_QUALITY_OPTIONS,
@@ -19,6 +20,7 @@ import {
 } from '../game/constants.js'
 import type {
   CrosshairColorPreset,
+  EnemyColorPreset,
   GameSettings,
   GraphicsQualityId,
   MissPunishment,
@@ -117,6 +119,17 @@ const COLOR_PRESET_OPTIONS: Array<{ id: CrosshairColorPreset; label: string }> =
   { id: 'white', label: 'White' },
   { id: 'yellow', label: 'Yellow' },
   { id: 'red', label: 'Red' },
+]
+
+const ENEMY_COLOR_OPTIONS: Array<{ id: EnemyColorPreset; label: string }> = [
+  { id: 'default', label: 'Default' },
+  { id: 'red', label: 'Red' },
+  { id: 'orange', label: 'Orange' },
+  { id: 'yellow', label: 'Yellow' },
+  { id: 'green', label: 'Green' },
+  { id: 'cyan', label: 'Cyan' },
+  { id: 'purple', label: 'Purple' },
+  { id: 'custom', label: 'Custom' },
 ]
 
 const NORMAL_CROSSHAIR_PRESET_IDS = Object.keys(
@@ -788,6 +801,48 @@ export function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
             }))
           }
         />
+
+        <p className="eyebrow">Enemy / target visuals</p>
+        <div className="segment-grid segment-grid-short">
+          {ENEMY_COLOR_OPTIONS.map((preset) => (
+            <SegmentButton
+              key={preset.id}
+              label={preset.label}
+              active={settings.enemyColorPreset === preset.id}
+              onClick={() =>
+                onChange((current) => ({
+                  ...current,
+                  enemyColorPreset: preset.id,
+                  enemyColor:
+                    preset.id === 'default' || preset.id === 'custom'
+                      ? current.enemyColor
+                      : ENEMY_COLOR_PRESETS[preset.id],
+                }))
+              }
+            />
+          ))}
+        </div>
+
+        <label className="color-row">
+          <span>Custom enemy color</span>
+          <input
+            type="color"
+            value={settings.enemyColor}
+            onChange={(event) =>
+              onChange((current) => ({
+                ...current,
+                enemyColorPreset: 'custom',
+                enemyColor: event.target.value,
+              }))
+            }
+          />
+        </label>
+
+        <p className="settings-note">
+          Default keeps the current dark enemy look exactly as it is now. If you pick a custom
+          color, it only affects normal enemy rendering, while the existing wallhack / through-door
+          assist visual stays unchanged.
+        </p>
       </section>
 
       <section className="panel">

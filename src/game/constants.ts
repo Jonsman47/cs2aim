@@ -2,6 +2,7 @@ import type {
   Aabb,
   BehaviorId,
   CrosshairColorPreset,
+  EnemyColorPreset,
   GameMode,
   GameSettings,
   GraphicsQualityId,
@@ -133,6 +134,17 @@ export const CROSSHAIR_COLOR_PRESETS: Record<CrosshairColorPreset, string> = {
   yellow: '#ffd466',
   red: '#ff7a66',
   custom: '#72f0c4',
+}
+
+export const ENEMY_COLOR_PRESETS: Record<EnemyColorPreset, string> = {
+  default: '#1c1e23',
+  red: '#ff5b61',
+  orange: '#ff9850',
+  yellow: '#ffd466',
+  green: '#70e38e',
+  cyan: '#67dfe2',
+  purple: '#b982ff',
+  custom: '#ff5b61',
 }
 
 export const GRAPHICS_QUALITY_OPTIONS: GraphicsQualityId[] = [
@@ -424,6 +436,8 @@ export const DEFAULT_SETTINGS: GameSettings = {
   masterVolume: 0.8,
   darkTheme: true,
   graphicsQuality: 'medium',
+  enemyColorPreset: 'default',
+  enemyColor: ENEMY_COLOR_PRESETS.custom,
   doorVisibilityAssist: false,
   showScoringBreakdown: true,
   showHitLabels: true,

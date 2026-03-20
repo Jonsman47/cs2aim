@@ -26,6 +26,16 @@ export type CrosshairColorPreset =
   | 'red'
   | 'custom'
 
+export type EnemyColorPreset =
+  | 'default'
+  | 'red'
+  | 'orange'
+  | 'yellow'
+  | 'green'
+  | 'cyan'
+  | 'purple'
+  | 'custom'
+
 export type CrosshairDynamicMode = 'static' | 'slight'
 
 export type ScopedInnerCrosshairStyle = 'none' | 'cross' | 'dot'
@@ -165,6 +175,8 @@ export interface GameSettings {
   masterVolume: number
   darkTheme: boolean
   graphicsQuality: GraphicsQualityId
+  enemyColorPreset: EnemyColorPreset
+  enemyColor: string
   doorVisibilityAssist: boolean
   showScoringBreakdown: boolean
   showHitLabels: boolean

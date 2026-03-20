@@ -34,6 +34,55 @@ const canvasMetricsCache = new WeakMap<HTMLCanvasElement, CanvasMetrics>()
 const contextCache = new WeakMap<HTMLCanvasElement, CanvasRenderingContext2D>()
 const sceneBufferCache = new WeakMap<HTMLCanvasElement, SceneBuffer>()
 
+const parseHexColor = (value: string) => {
+  const normalized = value.trim().replace('#', '')
+  const hex =
+    normalized.length === 3
+      ? normalized
+          .split('')
+          .map((channel) => `${channel}${channel}`)
+          .join('')
+      : normalized
+
+  if (!/^[\da-fA-F]{6}$/.test(hex)) {
+    return null
+  }
+
+  return {
+    r: Number.parseInt(hex.slice(0, 2), 16),
+    g: Number.parseInt(hex.slice(2, 4), 16),
+    b: Number.parseInt(hex.slice(4, 6), 16),
+  }
+}
+
+const mixHexColor = (
+  base: string,
+  target: string,
+  amount: number,
+) => {
+  const baseRgb = parseHexColor(base)
+  const targetRgb = parseHexColor(target)
+  if (!baseRgb || !targetRgb) {
+    return null
+  }
+
+  const clampedAmount = clamp(amount, 0, 1)
+  return {
+    r: Math.round(baseRgb.r + (targetRgb.r - baseRgb.r) * clampedAmount),
+    g: Math.round(baseRgb.g + (targetRgb.g - baseRgb.g) * clampedAmount),
+    b: Math.round(baseRgb.b + (targetRgb.b - baseRgb.b) * clampedAmount),
+  }
+}
+
+const toRgba = (
+  color: { r: number; g: number; b: number } | null,
+  alpha: number,
+  fallback: readonly [number, number, number],
+) => {
+  const resolved = color ?? { r: fallback[0], g: fallback[1], b: fallback[2] }
+  return `rgba(${resolved.r}, ${resolved.g}, ${resolved.b}, ${alpha})`
+}
+
 const QUALITY_PROFILES: Record<GameRuntime['settings']['graphicsQuality'], QualityProfile> = {
   'very-high': {
     renderScale: 1.15,
@@ -570,15 +619,36 @@ const drawEnemy = (
   if (alpha <= 0.02) {
     return
   }
+  const customEnemyColorActive = runtime.settings.enemyColorPreset !== 'default'
+  const primaryCustomBody = customEnemyColorActive
+    ? mixHexColor(runtime.settings.enemyColor, '#ffffff', 0.04)
+    : null
+  const secondaryCustomBody = customEnemyColorActive
+    ? mixHexColor(runtime.settings.enemyColor, '#ffffff', 0.1)
+    : null
+  const primaryCustomHead = customEnemyColorActive
+    ? mixHexColor(runtime.settings.enemyColor, '#000000', 0.22)
+    : null
+  const secondaryCustomHead = customEnemyColorActive
+    ? mixHexColor(runtime.settings.enemyColor, '#000000', 0.14)
+    : null
   const bodyColor = assistVisible
     ? enemy.role === 'primary'
       ? `rgba(72, 88, 116, ${alpha})`
       : `rgba(88, 104, 136, ${alpha * 0.94})`
+    : customEnemyColorActive
+      ? enemy.role === 'primary'
+        ? toRgba(primaryCustomBody, alpha, [28, 30, 35])
+        : toRgba(secondaryCustomBody, alpha * 0.96, [38, 40, 46])
     : enemy.role === 'primary'
       ? `rgba(28, 30, 35, ${alpha})`
       : `rgba(38, 40, 46, ${alpha * 0.96})`
   const headColor = assistVisible
     ? bodyColor
+    : customEnemyColorActive
+      ? enemy.role === 'primary'
+        ? toRgba(primaryCustomHead, alpha, [20, 22, 27])
+        : toRgba(secondaryCustomHead, alpha * 0.96, [28, 30, 35])
     : enemy.role === 'primary'
       ? `rgba(20, 22, 27, ${alpha})`
       : `rgba(28, 30, 35, ${alpha * 0.96})`
