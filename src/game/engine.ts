@@ -1095,8 +1095,8 @@ const lockAdminAssistTarget = (
   const region = chooseAdminAssistTargetRegion(runtime.settings.weapon)
   const { aim: nextAim } = getAdminAssistTargetAim(runtime, enemy, region)
   const visibleAt = now
-  const reactionDelayMs = 160 + Math.random() * 80
-  const flickDurationMs = 18 + Math.random() * 18
+  const reactionDelayMs = 180 + Math.random() * 80
+  const flickDurationMs = 34 + Math.random() * 26
   const fireAt = Math.max(
     visibleAt + reactionDelayMs + flickDurationMs,
     runtime.weaponCooldownUntil + 6,
