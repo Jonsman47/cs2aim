@@ -96,6 +96,7 @@ export type PeekSpeedId =
 export type ScopeLevel = 0 | 1 | 2
 
 export type HitRegion = 'head' | 'body'
+export type AdminAssistStatus = 'idle' | 'armed' | 'tracking'
 
 export type MessageTone = 'neutral' | 'good' | 'warn' | 'bad' | 'bonus'
 
@@ -538,6 +539,7 @@ export interface GameSnapshot {
   shotFeedback: ShotFeedback | null
   xp: XpProgress | null
   readyToFire: boolean
+  adminAssistStatus: AdminAssistStatus
   scopeLevel: ScopeLevel
   favoriteWeapon: WeaponMode
   averageShotTimeMs: number | null

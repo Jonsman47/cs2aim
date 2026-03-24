@@ -10,7 +10,7 @@ import {
   withDerivedMode,
 } from './constants.js'
 import { buildEnemyHitboxes, evaluateVisibility, raycastEnemyHit } from './hitDetection.js'
-import { clamp, directionFromAngles, lerp } from './math.js'
+import { clamp, directionFromAngles, lerp, smoothstep } from './math.js'
 import { createRepPlan, getBehaviorDescription } from './patterns.js'
 import { evaluateAttemptScore } from './scoring.js'
 import {
@@ -34,6 +34,7 @@ import type {
   EnemyHitboxes,
   EnemyPlan,
   EnemyStance,
+  HitRegion,
   ScopeLevel,
 } from './types.js'
 import type {
@@ -93,7 +94,31 @@ export interface RuntimeRepState {
           wallbang: boolean
         }>
       }
-    | null
+      | null
+}
+
+interface RuntimeAdminAssistState {
+  enabled: boolean
+  armed: boolean
+  armedAt: number | null
+  ignoredEnemyIds: string[]
+  targetEnemyId: string | null
+  targetRegion: HitRegion | null
+  triggerVisibleAt: number | null
+  fireAt: number | null
+  flickStartAt: number | null
+  flickEndAt: number | null
+  startYaw: number
+  startPitch: number
+  targetYaw: number
+  targetPitch: number
+}
+
+interface QueuedShotAudio {
+  weapon: WeaponMode
+  hit: boolean
+  headshot: boolean
+  wallbang: boolean
 }
 
 export interface GameRuntime {
@@ -111,6 +136,7 @@ export interface GameRuntime {
   lastResult: RoundResult | null
   currentMessage: PracticeMessage | null
   shotFeedback: ShotFeedback | null
+  queuedShotAudio: QueuedShotAudio | null
   rep: RuntimeRepState | null
   nextRepAt: number | null
   weaponCooldownUntil: number
@@ -126,6 +152,7 @@ export interface GameRuntime {
     level: ScopeLevel
     visualLevel: number
   }
+  adminAssist: RuntimeAdminAssistState
 }
 
 export interface FireOutcome {
@@ -142,8 +169,102 @@ const neutralMessage = (detail: string): PracticeMessage => ({
   tone: 'neutral',
 })
 
+const createAdminAssistState = (): RuntimeAdminAssistState => ({
+  enabled: false,
+  armed: false,
+  armedAt: null,
+  ignoredEnemyIds: [],
+  targetEnemyId: null,
+  targetRegion: null,
+  triggerVisibleAt: null,
+  fireAt: null,
+  flickStartAt: null,
+  flickEndAt: null,
+  startYaw: 0,
+  startPitch: 0,
+  targetYaw: 0,
+  targetPitch: 0,
+})
+
+const clearAdminAssistTrack = (assist: RuntimeAdminAssistState) => {
+  assist.targetEnemyId = null
+  assist.targetRegion = null
+  assist.triggerVisibleAt = null
+  assist.fireAt = null
+  assist.flickStartAt = null
+  assist.flickEndAt = null
+  assist.startYaw = 0
+  assist.startPitch = 0
+  assist.targetYaw = 0
+  assist.targetPitch = 0
+}
+
+const disarmAdminAssist = (runtime: GameRuntime) => {
+  runtime.adminAssist.armed = false
+  runtime.adminAssist.armedAt = null
+  runtime.adminAssist.ignoredEnemyIds = []
+  clearAdminAssistTrack(runtime.adminAssist)
+}
+
 const isRoundStartBehavior = (behavior: string | null | undefined) =>
   behavior === 'round-start'
+
+const chooseAdminAssistTargetRegion = (weapon: WeaponMode): HitRegion =>
+  weapon === 'awp' && Math.random() > 0.78 ? 'body' : 'head'
+
+const sampleBoxPoint = (
+  min: number,
+  max: number,
+  center: number,
+  variance: number,
+) => lerp(min, max, clamp(center + (Math.random() * 2 - 1) * variance, 0.15, 0.85))
+
+const getAdminAssistTargetPoint = (
+  enemy: RuntimeEnemyState,
+  region: HitRegion,
+): Vector3 => {
+  const hitbox = region === 'head' ? enemy.hitboxes.head : enemy.hitboxes.body
+
+  if (region === 'head') {
+    return {
+      x: sampleBoxPoint(hitbox.min.x, hitbox.max.x, 0.5, 0.12),
+      y: sampleBoxPoint(hitbox.min.y, hitbox.max.y, 0.56, 0.14),
+      z: sampleBoxPoint(hitbox.min.z, hitbox.max.z, 0.5, 0.08),
+    }
+  }
+
+  return {
+    x: sampleBoxPoint(hitbox.min.x, hitbox.max.x, 0.5, 0.18),
+    y: sampleBoxPoint(hitbox.min.y, hitbox.max.y, 0.7, 0.12),
+    z: sampleBoxPoint(hitbox.min.z, hitbox.max.z, 0.5, 0.08),
+  }
+}
+
+const getAimAnglesToPoint = (origin: Vector3, point: Vector3) => {
+  const dx = point.x - origin.x
+  const dy = point.y - origin.y
+  const dz = point.z - origin.z
+  const planarDistance = Math.max(Math.hypot(dx, dz), 0.001)
+
+  return {
+    yaw: Math.atan2(dx, dz),
+    pitch: Math.atan2(dy, planarDistance),
+  }
+}
+
+const clampAimToRuntime = (
+  runtime: GameRuntime,
+  yaw: number,
+  pitch: number,
+) => {
+  const yawLimit = VIEW_YAW_LIMIT * runtime.settings.difficulty.horizontalAimRange
+  return {
+    yaw: clamp(yaw, -yawLimit, yawLimit),
+    pitch: runtime.settings.difficulty.verticalAimEnabled
+      ? clamp(pitch, -CAMERA_PITCH_LIMIT, CAMERA_PITCH_LIMIT)
+      : 0,
+  }
+}
 
 const getAverageReactionTime = (reactionTimes: number[]) =>
   reactionTimes.length > 0
@@ -239,6 +360,8 @@ const queueNextRep = (runtime: GameRuntime, now: number) => {
   runtime.currentRep += 1
   const plan = createRepPlan(runtime.currentRep, runtime.settings)
   runtime.phase = 'preround'
+  runtime.adminAssist.ignoredEnemyIds = []
+  clearAdminAssistTrack(runtime.adminAssist)
   runtime.rep = {
     plan,
     queuedAt: now,
@@ -279,6 +402,8 @@ const finalizeSession = (runtime: GameRuntime, now: number) => {
   runtime.phase = 'summary'
   runtime.rep = null
   runtime.nextRepAt = null
+  runtime.queuedShotAudio = null
+  disarmAdminAssist(runtime)
   runtime.lastResult = null
   runtime.currentMessage = {
     title: 'Session Complete',
@@ -645,6 +770,7 @@ export const createGameRuntime = (
     'Click start, lock your cursor, and hold the lane for a live target.',
   ),
   shotFeedback: null,
+  queuedShotAudio: null,
   rep: null,
   nextRepAt: null,
   weaponCooldownUntil: 0,
@@ -660,6 +786,7 @@ export const createGameRuntime = (
     level: 0,
     visualLevel: 0,
   },
+  adminAssist: createAdminAssistState(),
 })
 
 export const setAccountSession = (
@@ -686,6 +813,76 @@ export const applySettings = (runtime: GameRuntime, settings: GameSettings) => {
 
 export const setPointerLocked = (runtime: GameRuntime, pointerLocked: boolean) => {
   runtime.pointerLocked = pointerLocked
+}
+
+export const setAdminAssistEnabled = (runtime: GameRuntime, enabled: boolean) => {
+  runtime.adminAssist.enabled = enabled
+  if (!enabled) {
+    disarmAdminAssist(runtime)
+  }
+}
+
+export const toggleAdminAssist = (runtime: GameRuntime, now: number) => {
+  if (!runtime.adminAssist.enabled) {
+    runtime.currentMessage = {
+      title: 'Admin Flick Locked',
+      detail: 'Log in as Jonsman to use the one-shot assist.',
+      tone: 'warn',
+    }
+    return false
+  }
+
+  if (runtime.phase === 'menu' || runtime.phase === 'summary' || runtime.phase === 'result') {
+    runtime.currentMessage = {
+      title: 'Admin Flick Unavailable',
+      detail: 'Start or resume a live block before arming the one-shot assist.',
+      tone: 'warn',
+    }
+    return false
+  }
+
+  if (runtime.adminAssist.armed) {
+    disarmAdminAssist(runtime)
+    runtime.currentMessage = {
+      title: 'Admin Flick Off',
+      detail: 'The one-shot assist was canceled before it committed.',
+      tone: 'warn',
+    }
+    return false
+  }
+
+  const rep = runtime.rep
+
+  runtime.adminAssist.armed = true
+  runtime.adminAssist.armedAt = now
+  runtime.adminAssist.ignoredEnemyIds = rep
+    ? rep.enemies
+        .filter(
+          (enemy) =>
+            rep.eligibleTargetIds.has(enemy.id) &&
+            !rep.deadIds.has(enemy.id) &&
+            !enemy.exited &&
+            enemy.openVisible,
+        )
+        .map((enemy) => enemy.id)
+    : []
+  clearAdminAssistTrack(runtime.adminAssist)
+  if (runtime.scope.level === 0) {
+    runtime.scope.level = 1
+  }
+  runtime.currentMessage = {
+    title: 'Admin Flick Armed',
+    detail:
+      'The next fresh target after this moment gets one fast assisted scoped flick. Press C again to cancel.',
+    tone: 'bonus',
+  }
+  return true
+}
+
+export const consumeQueuedShotAudio = (runtime: GameRuntime) => {
+  const queued = runtime.queuedShotAudio
+  runtime.queuedShotAudio = null
+  return queued
 }
 
 const getScopeSensitivityMultiplier = (runtime: GameRuntime) => {
@@ -759,10 +956,12 @@ export const startSession = (runtime: GameRuntime, now: number) => {
   runtime.currentRep = 0
   runtime.sessionGoal = runtime.settings.sessionLength
   runtime.shotFeedback = null
+  runtime.queuedShotAudio = null
   runtime.weaponCooldownUntil = 0
   runtime.nextRepAt = null
   runtime.aim.recoil = 0
   runtime.aim.inaccuracy = 0
+  disarmAdminAssist(runtime)
   queueNextRep(runtime, now)
 }
 
@@ -778,8 +977,10 @@ export const resetToMenu = (runtime: GameRuntime) => {
   runtime.scope.level = 0
   runtime.scope.visualLevel = 0
   runtime.shotFeedback = null
+  runtime.queuedShotAudio = null
   runtime.aim.recoil = 0
   runtime.aim.inaccuracy = 0
+  disarmAdminAssist(runtime)
   runtime.currentMessage = neutralMessage(
     'Pick a mode, tune the settings, and start a fresh session.',
   )
@@ -851,6 +1052,127 @@ export const getCameraPose = (runtime: GameRuntime) => {
       ? getScopedFov(runtime.scope.visualLevel)
       : CAMERA_FOV,
   }
+}
+
+const getAdminAssistCandidate = (runtime: GameRuntime) => {
+  const rep = runtime.rep
+  if (!rep) {
+    return null
+  }
+
+  return (
+    rep.enemies.find(
+      (enemy) =>
+        rep.eligibleTargetIds.has(enemy.id) &&
+        !rep.deadIds.has(enemy.id) &&
+        !enemy.exited &&
+        enemy.openVisible &&
+        !runtime.adminAssist.ignoredEnemyIds.includes(enemy.id),
+    ) ?? null
+  )
+}
+
+const lockAdminAssistTarget = (
+  runtime: GameRuntime,
+  enemy: RuntimeEnemyState,
+  now: number,
+) => {
+  const region = chooseAdminAssistTargetRegion(runtime.settings.weapon)
+  const targetPoint = getAdminAssistTargetPoint(enemy, region)
+  const camera = getCameraPose(runtime)
+  const targetAngles = getAimAnglesToPoint(camera.position, targetPoint)
+  const nextAim = clampAimToRuntime(runtime, targetAngles.yaw, targetAngles.pitch)
+  const visibleAt = now
+  const baseDelayMs = 140 + Math.random() * 80
+  const settleMs = 8 + Math.random() * 18
+  const flickDurationMs = clamp(56 + Math.random() * 42, 48, 104)
+  const fireAt = Math.max(visibleAt + baseDelayMs, runtime.weaponCooldownUntil + 6)
+  const flickEndAt = Math.max(visibleAt + 74, fireAt - settleMs)
+  const flickStartAt = Math.max(visibleAt + 18, flickEndAt - flickDurationMs)
+
+  runtime.adminAssist.targetEnemyId = enemy.id
+  runtime.adminAssist.targetRegion = region
+  runtime.adminAssist.triggerVisibleAt = visibleAt
+  runtime.adminAssist.fireAt = fireAt
+  runtime.adminAssist.flickStartAt = flickStartAt
+  runtime.adminAssist.flickEndAt = flickEndAt
+  runtime.adminAssist.startYaw = runtime.aim.yaw
+  runtime.adminAssist.startPitch = runtime.aim.pitch
+  runtime.adminAssist.targetYaw = nextAim.yaw
+  runtime.adminAssist.targetPitch = nextAim.pitch
+  runtime.adminAssist.ignoredEnemyIds = [...runtime.adminAssist.ignoredEnemyIds, enemy.id]
+}
+
+const updateAdminAssistAim = (runtime: GameRuntime, now: number) => {
+  const { adminAssist } = runtime
+  if (
+    adminAssist.flickStartAt === null ||
+    adminAssist.flickEndAt === null ||
+    now < adminAssist.flickStartAt
+  ) {
+    return
+  }
+
+  if (now >= adminAssist.flickEndAt) {
+    runtime.aim.yaw = adminAssist.targetYaw
+    runtime.aim.pitch = adminAssist.targetPitch
+    return
+  }
+
+  const progress = smoothstep(adminAssist.flickStartAt, adminAssist.flickEndAt, now)
+  runtime.aim.yaw = lerp(adminAssist.startYaw, adminAssist.targetYaw, progress)
+  runtime.aim.pitch = lerp(adminAssist.startPitch, adminAssist.targetPitch, progress)
+}
+
+const updateAdminAssist = (runtime: GameRuntime, now: number) => {
+  if (
+    !runtime.adminAssist.enabled ||
+    !runtime.adminAssist.armed ||
+    !runtime.rep ||
+    runtime.phase !== 'active'
+  ) {
+    return
+  }
+
+  if (runtime.scope.level === 0) {
+    runtime.scope.level = 1
+  }
+
+  if (runtime.adminAssist.targetEnemyId) {
+    const trackedEnemy =
+      runtime.rep.enemies.find((enemy) => enemy.id === runtime.adminAssist.targetEnemyId) ?? null
+
+    if (
+      !trackedEnemy ||
+      runtime.rep.deadIds.has(trackedEnemy.id) ||
+      trackedEnemy.exited ||
+      !runtime.rep.eligibleTargetIds.has(trackedEnemy.id)
+    ) {
+      disarmAdminAssist(runtime)
+      return
+    }
+
+    updateAdminAssistAim(runtime, now)
+
+    if (
+      runtime.adminAssist.fireAt !== null &&
+      now >= runtime.adminAssist.fireAt
+    ) {
+      runtime.aim.yaw = runtime.adminAssist.targetYaw
+      runtime.aim.pitch = runtime.adminAssist.targetPitch
+      fireShot(runtime, now, { queueAudio: true })
+      disarmAdminAssist(runtime)
+    }
+
+    return
+  }
+
+  const candidate = getAdminAssistCandidate(runtime)
+  if (!candidate) {
+    return
+  }
+
+  lockAdminAssistTarget(runtime, candidate, now)
 }
 
 export const updateRuntime = (runtime: GameRuntime, now: number) => {
@@ -953,6 +1275,8 @@ export const updateRuntime = (runtime: GameRuntime, now: number) => {
         tone: 'neutral',
       }
     }
+
+    updateAdminAssist(runtime, now)
   }
 
   if (runtime.phase === 'cooldown' && runtime.nextRepAt !== null && now >= runtime.nextRepAt) {
@@ -998,6 +1322,10 @@ interface WeaponHitResolution {
   killed: boolean
   feedbackTitle: string
   feedbackDetail: string | null
+}
+
+interface FireShotOptions {
+  queueAudio?: boolean
 }
 
 const getWeaponBodyShotResolution = (
@@ -1064,7 +1392,11 @@ const getWeaponBodyShotResolution = (
   }
 }
 
-export const fireShot = (runtime: GameRuntime, now: number): FireOutcome => {
+export const fireShot = (
+  runtime: GameRuntime,
+  now: number,
+  options: FireShotOptions = {},
+): FireOutcome => {
   if (
     (runtime.phase !== 'active' && runtime.phase !== 'preround') ||
     !runtime.rep ||
@@ -1093,6 +1425,22 @@ export const fireShot = (runtime: GameRuntime, now: number): FireOutcome => {
     0,
     0.045,
   )
+  const queueShotAudio = (
+    hitScored: boolean,
+    wasHeadshot: boolean,
+    wasWallbang: boolean,
+  ) => {
+    if (!options.queueAudio) {
+      return
+    }
+
+    runtime.queuedShotAudio = {
+      weapon: runtime.settings.weapon,
+      hit: hitScored,
+      headshot: wasHeadshot,
+      wallbang: wasWallbang,
+    }
+  }
 
   const hit = raycastEnemyHit(
     camera.position,
@@ -1137,6 +1485,7 @@ export const fireShot = (runtime: GameRuntime, now: number): FireOutcome => {
     )
     runtime.persistenceVersion += 1
     applyMissPunishment(runtime, now)
+    queueShotAudio(false, false, false)
     return {
       fired: true,
       hit: false,
@@ -1196,6 +1545,7 @@ export const fireShot = (runtime: GameRuntime, now: number): FireOutcome => {
       tone: 'warn',
     }
     runtime.persistenceVersion += 1
+    queueShotAudio(false, headshot, hit.wallbang)
     return {
       fired: true,
       hit: false,
@@ -1244,6 +1594,7 @@ export const fireShot = (runtime: GameRuntime, now: number): FireOutcome => {
       tone: 'warn',
     }
     runtime.persistenceVersion += 1
+    queueShotAudio(true, headshot, hit.wallbang)
     return {
       fired: true,
       hit: true,
@@ -1314,6 +1665,7 @@ export const fireShot = (runtime: GameRuntime, now: number): FireOutcome => {
       tone: reward.tone,
     }
     runtime.persistenceVersion += 1
+    queueShotAudio(true, headshot, hit.wallbang)
     return {
       fired: true,
       hit: true,
@@ -1335,6 +1687,7 @@ export const fireShot = (runtime: GameRuntime, now: number): FireOutcome => {
     reactionTime,
     xpGained,
   )
+  queueShotAudio(true, headshot, hit.wallbang)
 
   return {
     fired: true,
@@ -1357,6 +1710,12 @@ export const getSnapshot = (runtime: GameRuntime): GameSnapshot => {
     (enemy) => enemy.visibleToPlayer && enemy.throughDoor && !enemy.openVisible,
   )
   const xp = runtime.accountName === null ? null : getXpProgress(runtime.accountXp)
+  const adminAssistStatus =
+    !runtime.adminAssist.enabled || !runtime.adminAssist.armed
+      ? 'idle'
+      : runtime.adminAssist.targetEnemyId
+        ? 'tracking'
+        : 'armed'
 
   return {
     phase: runtime.phase,
@@ -1385,6 +1744,7 @@ export const getSnapshot = (runtime: GameRuntime): GameSnapshot => {
     readyToFire:
       (runtime.phase === 'active' || runtime.phase === 'preround') &&
       runtime.lastUpdateAt >= runtime.weaponCooldownUntil,
+    adminAssistStatus,
     scopeLevel: runtime.scope.level,
     favoriteWeapon: getFavoriteWeapon(runtime.lifetime),
     averageShotTimeMs: getAverageShotTime(runtime.lifetime),

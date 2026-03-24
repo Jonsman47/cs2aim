@@ -95,6 +95,12 @@ function App() {
         ? 'Next Random Peek'
         : 'Next Mixed Peek'
       : 'Repeat Same Peek'
+  const adminAssistLabel =
+    snapshot.adminAssistStatus === 'tracking'
+      ? 'Tracking'
+      : snapshot.adminAssistStatus === 'armed'
+        ? 'Armed'
+        : 'Ready'
 
   const syncFullscreenState = () => {
     setFullscreenActive(document.fullscreenElement === stageFrameRef.current)
@@ -182,6 +188,11 @@ function App() {
             <span>
               {WEAPON_LABELS[settings.weapon]} / {SCOPE_LEVEL_LABELS[snapshot.scopeLevel]}
             </span>
+            {isAdmin && snapshot.phase !== 'menu' && (
+              <span className={`admin-assist-chip is-${snapshot.adminAssistStatus}`}>
+                Admin Flick <HotkeyHint label={UI_KEYBINDS.adminAssist.label} /> {adminAssistLabel}
+              </span>
+            )}
           </div>
 
           <div className={`stage-actions ${snapshot.phase === 'menu' ? 'is-menu' : ''}`}>

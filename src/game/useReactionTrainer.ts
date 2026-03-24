@@ -51,14 +51,17 @@ import {
 import {
   applySettings,
   cycleScopeLevel,
+  consumeQueuedShotAudio,
   createGameRuntime,
   fireShot,
   getSnapshot,
   resetToMenu,
   setAccountSession,
+  setAdminAssistEnabled,
   setPointerLocked,
   skipToNextRep,
   startSession,
+  toggleAdminAssist,
   updateAimFromAbsolute,
   updateAimFromDelta,
   updateRuntime,
@@ -197,6 +200,11 @@ export const useReactionTrainer = () => {
   }
 
   useEffect(() => {
+    setAdminAssistEnabled(runtimeRef.current, isAdmin)
+    syncSnapshot()
+  }, [isAdmin])
+
+  useEffect(() => {
     applySettings(runtimeRef.current, withDerivedMode(settings))
   }, [settings])
 
@@ -328,6 +336,20 @@ export const useReactionTrainer = () => {
 
       lastHiddenTick = now
       updateRuntime(runtimeRef.current, now)
+      const queuedShotAudio = consumeQueuedShotAudio(runtimeRef.current)
+
+      if (queuedShotAudio) {
+        const volume = getAudioVolume(runtimeRef.current.settings)
+        if (volume > 0) {
+          const audio = ensureAudio()
+          audio.fire(queuedShotAudio.weapon, volume)
+          if (queuedShotAudio.hit) {
+            audio.hit(queuedShotAudio.headshot, queuedShotAudio.wallbang, volume)
+          } else {
+            audio.miss(volume)
+          }
+        }
+      }
 
       const canvas = canvasRef.current
       if (canvas && !tabHidden) {
@@ -1805,6 +1827,17 @@ export const useReactionTrainer = () => {
 
   const onKeyDown = useEffectEvent((event: KeyboardEvent) => {
     if (isTypingTarget(event.target)) {
+      return
+    }
+
+    if (event.code === UI_KEYBINDS.adminAssist.code) {
+      if (!isAdmin) {
+        return
+      }
+
+      event.preventDefault()
+      toggleAdminAssist(runtimeRef.current, performance.now())
+      syncSnapshot()
       return
     }
 
