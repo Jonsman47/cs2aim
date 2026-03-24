@@ -227,16 +227,16 @@ const getAdminAssistTargetPoint = (
 
   if (region === 'head') {
     return {
-      x: sampleBoxPoint(hitbox.min.x, hitbox.max.x, 0.5, 0.12),
-      y: sampleBoxPoint(hitbox.min.y, hitbox.max.y, 0.56, 0.14),
-      z: sampleBoxPoint(hitbox.min.z, hitbox.max.z, 0.5, 0.08),
+      x: sampleBoxPoint(hitbox.min.x, hitbox.max.x, 0.5, 0.02),
+      y: sampleBoxPoint(hitbox.min.y, hitbox.max.y, 0.55, 0.03),
+      z: sampleBoxPoint(hitbox.min.z, hitbox.max.z, 0.5, 0.02),
     }
   }
 
   return {
-    x: sampleBoxPoint(hitbox.min.x, hitbox.max.x, 0.5, 0.18),
-    y: sampleBoxPoint(hitbox.min.y, hitbox.max.y, 0.7, 0.12),
-    z: sampleBoxPoint(hitbox.min.z, hitbox.max.z, 0.5, 0.08),
+    x: sampleBoxPoint(hitbox.min.x, hitbox.max.x, 0.5, 0.03),
+    y: sampleBoxPoint(hitbox.min.y, hitbox.max.y, 0.68, 0.04),
+    z: sampleBoxPoint(hitbox.min.z, hitbox.max.z, 0.5, 0.02),
   }
 }
 
@@ -263,6 +263,21 @@ const clampAimToRuntime = (
     pitch: runtime.settings.difficulty.verticalAimEnabled
       ? clamp(pitch, -CAMERA_PITCH_LIMIT, CAMERA_PITCH_LIMIT)
       : 0,
+  }
+}
+
+const getAdminAssistTargetAim = (
+  runtime: GameRuntime,
+  enemy: RuntimeEnemyState,
+  region: HitRegion,
+) => {
+  const camera = getCameraPose(runtime)
+  const targetPoint = getAdminAssistTargetPoint(enemy, region)
+  const targetAngles = getAimAnglesToPoint(camera.position, targetPoint)
+
+  return {
+    targetPoint,
+    aim: clampAimToRuntime(runtime, targetAngles.yaw, targetAngles.pitch),
   }
 }
 
@@ -1078,17 +1093,16 @@ const lockAdminAssistTarget = (
   now: number,
 ) => {
   const region = chooseAdminAssistTargetRegion(runtime.settings.weapon)
-  const targetPoint = getAdminAssistTargetPoint(enemy, region)
-  const camera = getCameraPose(runtime)
-  const targetAngles = getAimAnglesToPoint(camera.position, targetPoint)
-  const nextAim = clampAimToRuntime(runtime, targetAngles.yaw, targetAngles.pitch)
+  const { aim: nextAim } = getAdminAssistTargetAim(runtime, enemy, region)
   const visibleAt = now
-  const baseDelayMs = 140 + Math.random() * 80
-  const settleMs = 8 + Math.random() * 18
-  const flickDurationMs = clamp(56 + Math.random() * 42, 48, 104)
-  const fireAt = Math.max(visibleAt + baseDelayMs, runtime.weaponCooldownUntil + 6)
-  const flickEndAt = Math.max(visibleAt + 74, fireAt - settleMs)
-  const flickStartAt = Math.max(visibleAt + 18, flickEndAt - flickDurationMs)
+  const reactionDelayMs = 160 + Math.random() * 80
+  const flickDurationMs = 18 + Math.random() * 18
+  const fireAt = Math.max(
+    visibleAt + reactionDelayMs + flickDurationMs,
+    runtime.weaponCooldownUntil + 6,
+  )
+  const flickStartAt = Math.max(visibleAt + reactionDelayMs, fireAt - flickDurationMs)
+  const flickEndAt = fireAt
 
   runtime.adminAssist.targetEnemyId = enemy.id
   runtime.adminAssist.targetRegion = region
@@ -1103,15 +1117,29 @@ const lockAdminAssistTarget = (
   runtime.adminAssist.ignoredEnemyIds = [...runtime.adminAssist.ignoredEnemyIds, enemy.id]
 }
 
-const updateAdminAssistAim = (runtime: GameRuntime, now: number) => {
+const updateAdminAssistAim = (
+  runtime: GameRuntime,
+  enemy: RuntimeEnemyState,
+  now: number,
+) => {
   const { adminAssist } = runtime
   if (
     adminAssist.flickStartAt === null ||
-    adminAssist.flickEndAt === null ||
-    now < adminAssist.flickStartAt
+    adminAssist.flickEndAt === null
   ) {
     return
   }
+
+  if (now < adminAssist.flickStartAt) {
+    adminAssist.startYaw = runtime.aim.yaw
+    adminAssist.startPitch = runtime.aim.pitch
+    return
+  }
+
+  const region = adminAssist.targetRegion ?? 'head'
+  const { aim } = getAdminAssistTargetAim(runtime, enemy, region)
+  adminAssist.targetYaw = aim.yaw
+  adminAssist.targetPitch = aim.pitch
 
   if (now >= adminAssist.flickEndAt) {
     runtime.aim.yaw = adminAssist.targetYaw
@@ -1152,15 +1180,20 @@ const updateAdminAssist = (runtime: GameRuntime, now: number) => {
       return
     }
 
-    updateAdminAssistAim(runtime, now)
+    updateAdminAssistAim(runtime, trackedEnemy, now)
 
     if (
       runtime.adminAssist.fireAt !== null &&
       now >= runtime.adminAssist.fireAt
     ) {
-      runtime.aim.yaw = runtime.adminAssist.targetYaw
-      runtime.aim.pitch = runtime.adminAssist.targetPitch
-      fireShot(runtime, now, { queueAudio: true })
+      const region = runtime.adminAssist.targetRegion ?? 'head'
+      const { aim } = getAdminAssistTargetAim(runtime, trackedEnemy, region)
+      runtime.aim.yaw = aim.yaw
+      runtime.aim.pitch = aim.pitch
+      fireShot(runtime, now, {
+        queueAudio: true,
+        directionOverride: directionFromAngles(aim.yaw, aim.pitch),
+      })
       disarmAdminAssist(runtime)
     }
 
@@ -1326,6 +1359,7 @@ interface WeaponHitResolution {
 
 interface FireShotOptions {
   queueAudio?: boolean
+  directionOverride?: Vector3
 }
 
 const getWeaponBodyShotResolution = (
@@ -1413,7 +1447,7 @@ export const fireShot = (
 
   const weapon = WEAPON_PROPERTIES[runtime.settings.weapon]
   const camera = getCameraPose(runtime)
-  const direction = getShotDirection(runtime, camera, weapon)
+  const direction = options.directionOverride ?? getShotDirection(runtime, camera, weapon)
   runtime.weaponCooldownUntil = now + weapon.cooldownMs
   runtime.rep.shotsFired += 1
   runtime.lifetime = recordLifetimeShot(runtime.lifetime, runtime.settings.weapon)
